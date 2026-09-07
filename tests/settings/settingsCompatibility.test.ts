@@ -30,6 +30,7 @@ describe('设置兼容', () => {
       themeId: 'warm',
       lastLightThemeId: 'warm',
       assistantVisualId: 'sprite',
+      aiAssistantFontSize: 14,
       motionPreference: 'system',
     })
     expect(state.webSearch).toMatchObject({ provider: 'duckduckgo', maxResults: 5, timeout: 60000 })
@@ -55,7 +56,24 @@ describe('设置兼容', () => {
     const state = store.getState()
 
     expect(state.editor).toMatchObject({ fontSize: 18, lineHeight: 1.65, fullscreenContentPadding: 88, inlinePreviewEdit: true, autoSendAiShortcut: true, defaultOpenMode: 'preview' })
-    expect(state.appearance).toMatchObject({ themeId: 'dark', lastLightThemeId: 'warm', aiAvatarStyle: 'sprite' })
+    expect(state.appearance).toMatchObject({ themeId: 'dark', lastLightThemeId: 'warm', aiAvatarStyle: 'sprite', aiAssistantFontSize: 14 })
+  })
+
+  it.each([12, 14, 16, 18] as const)('保留合法 AI 助手字号 %ipx', async (fontSize) => {
+    const store = await loadSettingsStore({ appearance: { aiAssistantFontSize: fontSize } })
+    expect(store.getState().appearance.aiAssistantFontSize).toBe(fontSize)
+  })
+
+  it('非法 AI 助手字号回退为 14px', async () => {
+    const store = await loadSettingsStore({ appearance: { aiAssistantFontSize: 20 } })
+    expect(store.getState().appearance.aiAssistantFontSize).toBe(14)
+  })
+
+  it('AI 助手字号更新后写入持久配置', async () => {
+    const store = await loadSettingsStore()
+    store.getState().updateAppearanceSettings({ aiAssistantFontSize: 18 })
+    const persisted = JSON.parse(localStorage.getItem('guanmo-settings') || '{}') as { state?: { appearance?: { aiAssistantFontSize?: number } } }
+    expect(persisted.state?.appearance?.aiAssistantFontSize).toBe(18)
   })
 
   it('保留用户显式关闭快捷 AI 自动发送的设置', async () => {

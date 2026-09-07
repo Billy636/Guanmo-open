@@ -149,6 +149,7 @@ export function PromptComposer({ onSend, streaming, onCancel, onReasoningModeCha
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Enter 发送)"
             className={`w-full bg-transparent resize-none text-body text-gm-text placeholder-gm-text-disabled focus:outline-none min-h-[20px] max-h-[120px] ${streaming ? 'opacity-60' : ''}`}
+            style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}
             rows={1}
             disabled={streaming}
           />

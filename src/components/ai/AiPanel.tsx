@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useCallback, useMemo, type PointerEventHandler } from 'react'
+import { memo, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type PointerEventHandler } from 'react'
 import { useAppStore } from '@/stores/appStore'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -91,6 +91,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   const { messages, streaming, error, timeline, sendMessage, cancelStream } = useAiChat()
   const databaseEnabled = getRuntimeCapabilities().database
   const assistantVisualId = useSettingsStore((s) => s.appearance.assistantVisualId)
+  const assistantFontSize = useSettingsStore((s) => s.appearance.aiAssistantFontSize)
   const setDraftInput = useChatStore((s) => s.setDraftInput)
   const clearMessages = useChatStore((s) => s.clearMessages)
   const hasMoreHistory = useChatStore((s) => s.hasMoreHistory)
@@ -561,7 +562,10 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   }, [databaseEnabled])
 
   return (
-    <div className="gm-instant-color h-full min-h-0 flex flex-col relative">
+    <div
+      className="gm-instant-color h-full min-h-0 flex flex-col relative"
+      style={{ '--gm-ai-chat-font-size': `${assistantFontSize}px` } as CSSProperties}
+    >
       {/* Header */}
       <div
         className={`flex items-center border-b border-gm-border-subtle bg-gm-surface relative z-10 ${
@@ -1575,7 +1579,10 @@ export const ChatBubble = memo(function ChatBubble({
               ? 'rounded-br-md'
               : 'bg-gm-surface-elevated text-gm-text border border-gm-border rounded-bl-md'
           } ${isAssistantStreaming ? 'gm-streaming-bubble' : ''}`}
-          style={isUser ? { backgroundColor: 'var(--gm-user-bubble-bg)', color: 'var(--gm-user-bubble-text)' } : undefined}
+          style={{
+            fontSize: 'var(--gm-ai-chat-font-size)',
+            ...(isUser ? { backgroundColor: 'var(--gm-user-bubble-bg)', color: 'var(--gm-user-bubble-text)' } : {}),
+          }}
         >
           {isEmpty ? (
             <div className="gm-typing-loader" aria-label="正在生成">
@@ -1785,13 +1792,13 @@ const ASSISTANT_MARKDOWN_COMPONENTS: Components = {
             </div>
           )}
           <pre className="p-3 m-0 max-w-full overflow-x-auto">
-            <code className="text-[12px] font-mono leading-5 whitespace-pre-wrap">{children}</code>
+            <code className="font-mono leading-5 whitespace-pre-wrap">{children}</code>
           </pre>
         </div>
       )
     }
     return (
-      <code className="px-1.5 py-0.5 rounded bg-gm-canvas text-gm-accent text-[12px] font-mono whitespace-pre-wrap">
+      <code className="px-1.5 py-0.5 rounded bg-gm-canvas text-gm-accent font-mono whitespace-pre-wrap">
         {children}
       </code>
     )
@@ -1812,7 +1819,7 @@ const ASSISTANT_MARKDOWN_COMPONENTS: Components = {
   hr: () => <hr className="my-3 border-gm-border" />,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto rounded-lg border border-gm-border">
-      <table className="w-full border-collapse text-caption">{children}</table>
+      <table className="w-full border-collapse">{children}</table>
     </div>
   ),
   th: ({ children }) => (

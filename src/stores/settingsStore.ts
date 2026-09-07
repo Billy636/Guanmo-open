@@ -50,6 +50,9 @@ interface EditorSettings {
   defaultOpenMode: 'edit' | 'preview'
 }
 
+export const AI_ASSISTANT_FONT_SIZES = [12, 14, 16, 18] as const
+export type AiAssistantFontSize = typeof AI_ASSISTANT_FONT_SIZES[number]
+
 // 保留字段名与持久化结构，避免旧版本配置读取失败；运行时唯一头像方案为小球。
 export const AI_AVATAR_STYLES = ['sprite'] as const
 export type AiAvatarStyle = typeof AI_AVATAR_STYLES[number]
@@ -57,6 +60,7 @@ export type AiAvatarStyle = typeof AI_AVATAR_STYLES[number]
 interface AppearanceSettings extends AppearanceConfigV1 {
   customCursorEnabled: boolean
   aiAvatarStyle: AiAvatarStyle
+  aiAssistantFontSize: AiAssistantFontSize
   lastLightThemeId: NonDarkThemeId
 }
 
@@ -129,7 +133,14 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   ...DEFAULT_APPEARANCE_CONFIG_V1,
   customCursorEnabled: false,
   aiAvatarStyle: 'sprite',
+  aiAssistantFontSize: 14,
   lastLightThemeId: 'warm',
+}
+
+function resolveAiAssistantFontSize(value: unknown): AiAssistantFontSize {
+  return typeof value === 'number' && AI_ASSISTANT_FONT_SIZES.includes(value as AiAssistantFontSize)
+    ? value as AiAssistantFontSize
+    : DEFAULT_APPEARANCE_SETTINGS.aiAssistantFontSize
 }
 
 const DEFAULT_WEB_SEARCH: WebSearchConfig = {
@@ -400,6 +411,7 @@ export const useSettingsStore = create<SettingsState>()(
                 ? savedAppearance.customCursorEnabled
                 : current.appearance.customCursorEnabled,
               aiAvatarStyle: resolveAiAvatarStyle(savedAppearance, current),
+              aiAssistantFontSize: resolveAiAssistantFontSize(savedAppearance.aiAssistantFontSize),
               ...resolved,
               lastLightThemeId: resolveLastLightThemeId(savedAppearance),
             }

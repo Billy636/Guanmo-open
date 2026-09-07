@@ -5,6 +5,7 @@ import { StatusBar } from '@/components/layout/StatusBar'
 import { consumePendingPanelNavigation, requestOpenReadingArtifacts } from '@/services/aiPanelNavigation'
 import type { TimelineItem } from '@/stores/chatStore'
 import { useAppStore } from '@/stores/appStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 const aiChat = vi.hoisted(() => ({
   messages: [
@@ -95,6 +96,7 @@ describe('AI 面板视图返回', () => {
     readingArtifacts.pageSize = 20
     readingArtifacts.total = 1
     aiChat.timeline = []
+    useSettingsStore.getState().updateAppearanceSettings({ aiAssistantFontSize: 14 })
     readingArtifacts.setQuery.mockReset()
     readingArtifacts.setPage.mockReset()
     scrollTo.mockReset()
@@ -175,6 +177,26 @@ describe('AI 面板视图返回', () => {
   it('侧边栏懒加载前会保留阅读成果导航意图', () => {
     requestOpenReadingArtifacts()
     expect(consumePendingPanelNavigation()).toEqual({ mode: 'open', view: 'artifacts' })
+  })
+
+  it('AI 助手字号会同步应用到消息和输入框', () => {
+    render(<AiPanel />)
+
+    const panel = document.querySelector('.gm-instant-color') as HTMLElement
+    const userBubble = screen.getByText('匿名问题').closest('.select-text') as HTMLElement
+    const assistantBubble = screen.getByText('匿名回答').closest('.select-text') as HTMLElement
+    const input = screen.getByPlaceholderText('输入消息... (Enter 发送)') as HTMLTextAreaElement
+
+    expect(panel.style.getPropertyValue('--gm-ai-chat-font-size')).toBe('14px')
+    expect(userBubble.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
+    expect(assistantBubble.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
+    expect(input.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
+
+    act(() => {
+      useSettingsStore.getState().updateAppearanceSettings({ aiAssistantFontSize: 18 })
+    })
+
+    expect(panel.style.getPropertyValue('--gm-ai-chat-font-size')).toBe('18px')
   })
 
 })
