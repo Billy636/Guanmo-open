@@ -188,6 +188,7 @@ describe('AI 面板视图返回', () => {
     const input = screen.getByPlaceholderText('输入消息... (Enter 发送)') as HTMLTextAreaElement
 
     expect(panel.style.getPropertyValue('--gm-ai-chat-font-size')).toBe('14px')
+    expect(panel.style.getPropertyValue('--gm-ai-chat-meta-font-size')).toBe('calc(14px - 2px)')
     expect(userBubble.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
     expect(assistantBubble.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
     expect(input.style.fontSize).toBe('var(--gm-ai-chat-font-size)')
@@ -197,6 +198,7 @@ describe('AI 面板视图返回', () => {
     })
 
     expect(panel.style.getPropertyValue('--gm-ai-chat-font-size')).toBe('18px')
+    expect(panel.style.getPropertyValue('--gm-ai-chat-meta-font-size')).toBe('calc(18px - 2px)')
   })
 
 })

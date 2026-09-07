@@ -564,7 +564,10 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   return (
     <div
       className="gm-instant-color h-full min-h-0 flex flex-col relative"
-      style={{ '--gm-ai-chat-font-size': `${assistantFontSize}px` } as CSSProperties}
+      style={{
+        '--gm-ai-chat-font-size': `${assistantFontSize}px`,
+        '--gm-ai-chat-meta-font-size': `calc(${assistantFontSize}px - 2px)`,
+      } as CSSProperties}
     >
       {/* Header */}
       <div
@@ -842,13 +845,13 @@ function ReadingRemindersPanel({
   const [editingTime, setEditingTime] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   if (loading) {
-    return <div className="p-6 text-center text-caption text-gm-text-secondary">正在加载提醒…</div>
+    return <div className="p-6 text-center text-caption text-gm-text-secondary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>正在加载提醒…</div>
   }
   if (reminders.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-        <p className="mb-1 font-bold text-gm-text-secondary">还没有阅读提醒</p>
-        <p className="text-caption text-gm-text-tertiary">可在对话中让 AI 提出一次性提醒，确认后才会注册。</p>
+        <p className="mb-1 font-bold text-gm-text-secondary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>还没有阅读提醒</p>
+        <p className="text-caption text-gm-text-tertiary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>可在对话中让 AI 提出一次性提醒，确认后才会注册。</p>
       </div>
     )
   }
@@ -864,8 +867,8 @@ function ReadingRemindersPanel({
           <div key={reminder.id} className="rounded-xl border border-gm-border bg-gm-surface-elevated p-3">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-body font-bold text-gm-text">{reminder.title}</p>
-                <p className="mt-1 text-caption text-gm-text-secondary">
+                <p className="truncate text-body font-bold text-gm-text" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>{reminder.title}</p>
+                <p className="mt-1 text-caption text-gm-text-secondary" style={{ fontSize: 'var(--gm-ai-chat-meta-font-size)' }}>
                   {new Intl.DateTimeFormat('zh-CN', {
                     timeZone: reminder.createdTimezone,
                     year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
@@ -873,7 +876,7 @@ function ReadingRemindersPanel({
                   }).format(reminder.dueAtUtc)}
                 </p>
                 {reminder.description && (
-                  <p className="mt-1 whitespace-pre-wrap text-caption text-gm-text-tertiary">{reminder.description}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-caption text-gm-text-tertiary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>{reminder.description}</p>
                 )}
                 <p className="mt-2 text-micro text-gm-text-tertiary">
                   {REMINDER_STATUS_LABELS[reminder.status]}
