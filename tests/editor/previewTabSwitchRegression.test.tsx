@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
+import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 if (!Range.prototype.getClientRects) {
@@ -76,6 +77,7 @@ vi.mock('@/services/markdownBlocks', async (importOriginal) => {
 })
 
 import { EditorArea } from '@/components/editor/EditorArea'
+import { MarkdownDiffView, type MarkdownDiffViewHandle } from '@/components/editor/MarkdownDiffView'
 import { useEditorStore, type Tab, type ViewMode } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -222,6 +224,189 @@ describe('preview horizontal overflow boundary', () => {
       expect(pane).not.toHaveClass('overflow-auto')
     })
     expect(container.querySelectorAll('pre.overflow-x-auto, div.overflow-x-auto').length).toBeGreaterThanOrEqual(4)
+  })
+})
+
+describe('Ctrl+滚轮字号锚点', () => {
+  it('阻止字号快捷滚轮的默认行为，同时保留普通滚轮与字号边界', async () => {
+    setupEditor([anonymousTab('tab-a', '# 标题\n\n正文')], 'tab-a', 'edit')
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    render(<EditorArea />)
+    await settleLazyEditorModules()
+
+    const zoomResult = fireEvent.wheel(window, { ctrlKey: true, deltaY: -100 })
+    expect(zoomResult).toBe(false)
+    expect(useSettingsStore.getState().editor.fontSize).toBe(15)
+
+    const ordinaryResult = fireEvent.wheel(window, { deltaY: 100 })
+    expect(ordinaryResult).toBe(true)
+    expect(useSettingsStore.getState().editor.fontSize).toBe(15)
+
+    act(() => useSettingsStore.getState().updateEditorSettings({ fontSize: 24 }))
+    const boundaryResult = fireEvent.wheel(window, { ctrlKey: true, deltaY: -100 })
+    expect(boundaryResult).toBe(false)
+    expect(useSettingsStore.getState().editor.fontSize).toBe(24)
+  })
+
+  it('预览字号放大后按新布局恢复顶部源码行', async () => {
+    const content = Array.from({ length: 180 }, (_, index) => `第 ${index + 1} 段\n第二行`).join('\n\n')
+    setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview')
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    const { container } = render(<EditorArea />)
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(50))
+
+    const preview = getLeftPreviewContainer(container)!
+    preview.scrollTop = 1_200
+    fireEvent.scroll(preview)
+
+    fireEvent.wheel(preview, { ctrlKey: true, deltaY: -100 })
+    act(() => vi.advanceTimersByTime(1))
+
+    expect(useSettingsStore.getState().editor.fontSize).toBe(15)
+    expect(preview.scrollTop).not.toBe(1_200)
+  })
+
+  it('编辑模式按新行高恢复顶部源码行和行内偏移', async () => {
+    const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 行`).join('\n')
+    setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'edit')
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    const view = render(<EditorArea />)
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(50))
+
+    const lineBlockAtHeightSpy = vi.spyOn(EditorView.prototype, 'lineBlockAtHeight')
+      .mockImplementation(function (height) {
+        const rowHeight = useSettingsStore.getState().editor.fontSize * 2
+        const lineNumber = Math.min(this.state.doc.lines, Math.floor(height / rowHeight) + 1)
+        const line = this.state.doc.line(lineNumber)
+        const top = (lineNumber - 1) * rowHeight
+        return { from: line.from, to: line.to, top, bottom: top + rowHeight, height: rowHeight } as any
+      })
+    const lineBlockAtSpy = vi.spyOn(EditorView.prototype, 'lineBlockAt')
+      .mockImplementation(function (pos) {
+        const rowHeight = useSettingsStore.getState().editor.fontSize * 2
+        const line = this.state.doc.lineAt(pos)
+        const top = (line.number - 1) * rowHeight
+        return { from: line.from, to: line.to, top, bottom: top + rowHeight, height: rowHeight } as any
+      })
+
+    const beforeScroller = view.container.querySelector<HTMLElement>('.cm-scroller')!
+    beforeScroller.scrollTop = 320
+    fireEvent.wheel(beforeScroller, { ctrlKey: true, deltaY: -100 })
+    act(() => vi.advanceTimersByTime(1))
+
+    const afterScroller = view.container.querySelector<HTMLElement>('.cm-scroller')!
+    expect(afterScroller).not.toBe(beforeScroller)
+    expect(afterScroller.scrollTop).toBe(344)
+    lineBlockAtHeightSpy.mockRestore()
+    lineBlockAtSpy.mockRestore()
+  })
+
+  it('双预览分别恢复左右窗格的顶部源码行', async () => {
+    const content = Array.from({ length: 180 }, (_, index) => `第 ${index + 1} 段\n第二行`).join('\n\n')
+    setupEditor([
+      anonymousTab('tab-a', content),
+      anonymousTab('tab-b', content.replaceAll('段', '节')),
+    ], 'tab-a', 'dual-preview', { syncScroll: true })
+    useEditorStore.setState({ rightPaneTabId: 'tab-b', rightPaneUserSelected: true })
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    const { container } = render(<EditorArea />)
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(50))
+
+    const panes = container.querySelectorAll<HTMLElement>('.overflow-y-auto.overflow-x-hidden.select-text.bg-gm-surface')
+    expect(panes).toHaveLength(2)
+    panes[0].scrollTop = 700
+    panes[1].scrollTop = 1_100
+
+    fireEvent.wheel(panes[0], { ctrlKey: true, deltaY: -100 })
+    act(() => vi.advanceTimersByTime(1))
+
+    expect(panes[0].scrollTop).not.toBe(700)
+    expect(panes[1].scrollTop).not.toBe(1_100)
+  })
+
+  it('快速连续缩放只执行最后一代的两帧恢复', async () => {
+    const content = Array.from({ length: 180 }, (_, index) => `第 ${index + 1} 段\n第二行`).join('\n\n')
+    setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview')
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    const { container } = render(<EditorArea />)
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(50))
+
+    const preview = getLeftPreviewContainer(container)!
+    let scrollTop = 1_200
+    const writes: number[] = []
+    Object.defineProperty(preview, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value
+        writes.push(value)
+      },
+    })
+
+    fireEvent.wheel(preview, { ctrlKey: true, deltaY: -100 })
+    fireEvent.wheel(preview, { ctrlKey: true, deltaY: -100 })
+    act(() => vi.advanceTimersByTime(1))
+
+    expect(useSettingsStore.getState().editor.fontSize).toBe(16)
+    expect(writes).toHaveLength(2)
+  })
+
+  it('缩放恢复前切换标签页会丢弃旧文档锚点', async () => {
+    const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 段`).join('\n\n')
+    setupEditor([
+      anonymousTab('tab-a', content),
+      anonymousTab('tab-b', '# 文档 B\n\n正文 B'),
+    ], 'tab-a', 'preview')
+    useSettingsStore.getState().updateEditorSettings({ fontSize: 14 })
+    const view = render(<EditorArea />)
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(50))
+
+    const previewA = getLeftPreviewContainer(view.container)!
+    previewA.scrollTop = 900
+    fireEvent.wheel(previewA, { ctrlKey: true, deltaY: -100 })
+    act(() => useEditorStore.getState().setActiveTab('tab-b'))
+    await settleLazyEditorModules()
+    act(() => vi.advanceTimersByTime(1))
+
+    const previewB = getLeftPreviewContainer(view.container)!
+    expect(previewB).not.toBe(previewA)
+    expect(previewB.scrollTop).toBe(0)
+    expect(useEditorStore.getState().readingPositions['tab-b']?.previewScrollTop).not.toBe(900)
+  })
+
+  it('Diff 视图按行索引与行内偏移恢复顶部锚点', () => {
+    const ref = createRef<MarkdownDiffViewHandle>()
+    const props = {
+      original: 'A\nB\nC\nD',
+      current: 'A\nB2\nC\nD',
+      fontSize: 14,
+      lineHeight: 1.65,
+      fontFamily: 'monospace',
+      wordWrap: true,
+      lineNumbers: true,
+    }
+    const view = render(<MarkdownDiffView ref={ref} {...props} />)
+    const root = view.container.firstElementChild as HTMLElement
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-diff-row-index]'))
+    let rowHeight = 20
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 600, 400))
+    rows.forEach((row, index) => {
+      vi.spyOn(row, 'getBoundingClientRect').mockImplementation(() => (
+        new DOMRect(0, 100 + 40 + index * rowHeight - root.scrollTop, 600, rowHeight)
+      ))
+    })
+    root.scrollTop = 50
+    const anchor = ref.current?.getTopRowAnchor(32)
+    expect(anchor).toEqual({ row: 2, offset: 2 })
+
+    rowHeight = 24
+    ref.current?.restoreTopRowAnchor(anchor!, 32)
+    expect(root.scrollTop).toBe(58)
   })
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { eventMarker } from '@/services/eventMarker'
 
 interface DiffLine {
@@ -18,6 +18,11 @@ interface MarkdownDiffViewProps {
   lineNumbers: boolean
   documentKey?: string
   resource?: 'diff'
+}
+
+export interface MarkdownDiffViewHandle {
+  getTopRowAnchor: (topOffset: number) => { row: number; offset: number } | undefined
+  restoreTopRowAnchor: (anchor: { row: number; offset: number }, topOffset: number) => void
 }
 
 function buildLineDiff(original: string, current: string): DiffLine[] {
@@ -54,7 +59,7 @@ function buildLineDiff(original: string, current: string): DiffLine[] {
   return lines
 }
 
-export function MarkdownDiffView({
+export const MarkdownDiffView = forwardRef<MarkdownDiffViewHandle, MarkdownDiffViewProps>(function MarkdownDiffView({
   original,
   current,
   fontSize,
@@ -64,8 +69,9 @@ export function MarkdownDiffView({
   lineNumbers,
   documentKey,
   resource = 'diff',
-}: MarkdownDiffViewProps) {
+}, ref) {
   const lifecycleMetadataRef = useRef({ documentKey, resource })
+  const rootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const lifecycleMetadata = lifecycleMetadataRef.current
     eventMarker.mark('diff-create', lifecycleMetadata)
@@ -75,8 +81,44 @@ export function MarkdownDiffView({
   const lines = buildLineDiff(original, current)
   const changed = lines.filter((line) => line.type !== 'same').length
 
+  useImperativeHandle(ref, () => ({
+    getTopRowAnchor(topOffset) {
+      const root = rootRef.current
+      if (!root) return undefined
+      const targetTop = root.scrollTop + topOffset
+      const rootTop = root.getBoundingClientRect().top
+      const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-diff-row-index]'))
+      let candidate: HTMLElement | undefined
+      let candidateTop = 0
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect()
+        const rowTop = rect.top - rootTop + root.scrollTop
+        const rowBottom = rowTop + rect.height
+        if (rowTop <= targetTop && targetTop < rowBottom) {
+          candidate = row
+          candidateTop = rowTop
+          break
+        }
+        if (rowTop > targetTop) break
+        candidate = row
+        candidateTop = rowTop
+      }
+      if (!candidate) return undefined
+      const rowIndex = Number(candidate.dataset.diffRowIndex)
+      if (!Number.isFinite(rowIndex)) return undefined
+      return { row: rowIndex, offset: targetTop - candidateTop }
+    },
+    restoreTopRowAnchor(anchor, topOffset) {
+      const root = rootRef.current
+      const row = root?.querySelector<HTMLElement>(`[data-diff-row-index="${anchor.row}"]`)
+      if (!root || !row) return
+      const rowTop = row.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+      root.scrollTop = Math.max(0, rowTop + anchor.offset - topOffset)
+    },
+  }), [])
+
   return (
-    <div className="h-full min-w-0 flex-1 overflow-auto bg-gm-surface">
+    <div ref={rootRef} className="h-full min-w-0 flex-1 overflow-auto bg-gm-surface">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gm-border-subtle bg-gm-surface/95 px-4 py-2">
         <div className="text-caption font-bold text-gm-text">Markdown Diff</div>
         <div className="text-micro text-gm-text-tertiary">{changed} 行变化</div>
@@ -89,6 +131,7 @@ export function MarkdownDiffView({
         ) : lines.map((line, index) => (
           <div
             key={`${index}-${line.type}`}
+            data-diff-row-index={index}
             className={`grid border-b border-gm-border-subtle px-3 ${
               line.type === 'added'
                 ? 'bg-gm-success/10'
@@ -115,4 +158,4 @@ export function MarkdownDiffView({
       </div>
     </div>
   )
-}
+})
