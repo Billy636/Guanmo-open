@@ -74,6 +74,13 @@ export function useReadingPositionBridge({
     return position?.previewScrollTop ?? 0
   }, [])
 
+  const getStoredPreviewPosition = useCallback((tabId: string | null | undefined, pane: 'left' | 'right' = 'left') => {
+    if (!tabId || !readingPositionsRef.current) return undefined
+    return useEditorStore.getState().viewMode === 'dual-preview'
+      ? readingPositionsRef.current.getForPane(tabId, pane)
+      : readingPositionsRef.current.get(tabId)
+  }, [])
+
   const getStoredEditorTop = useCallback((tabId: string | null | undefined) => {
     if (!tabId || !readingPositionsRef.current) return 0
     return readingPositionsRef.current.get(tabId)?.editorScrollTop ?? 0
@@ -165,7 +172,11 @@ export function useReadingPositionBridge({
     editorRestoreFrameRef.current = window.requestAnimationFrame(() => {
       editorRestoreFrameRef.current = null
       const currentMode = useEditorStore.getState().viewMode
-      if (editorViewRef.current !== view || (currentMode !== 'edit' && currentMode !== 'edit-preview')) return
+      if (
+        editorViewRef.current !== view
+        || useEditorStore.getState().activeTabId !== tabId
+        || (currentMode !== 'edit' && currentMode !== 'edit-preview')
+      ) return
       if (typeof position.editorScrollTop === 'number') {
         view.scrollDOM.scrollTop = position.editorScrollTop
       } else if (typeof position.topLine === 'number' && position.topLine <= view.state.doc.lines) {
@@ -286,6 +297,7 @@ export function useReadingPositionBridge({
     readingPositionsRef: readingPositionsRef as MutableRefObject<ReadingPositionSession>,
     isRestoringScrollRef,
     getStoredPreviewTop,
+    getStoredPreviewPosition,
     getStoredEditorTop,
     saveEditorPositionForTab,
     savePreviewReadingPosition,

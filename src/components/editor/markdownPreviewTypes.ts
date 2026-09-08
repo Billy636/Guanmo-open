@@ -72,6 +72,9 @@ export interface MarkdownPreviewProps {
   onTaskToggle?: (line: number, checked: boolean) => void
   onHeadingClick?: (line: number) => void
   onDraftStateChange?: (hasDraft: boolean) => void
+  /** 首次挂载时直接建立虚拟窗口与容器位置；后续测量仍可校正。 */
+  initialScrollTop?: number
+  initialTopLine?: number
   /** 父级预览 surface 是否已真实可见；隐藏预热实例必须传 false。 */
   isVisible?: boolean
   onFirstVisible?: () => void

@@ -375,6 +375,8 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   onTaskToggle,
   onHeadingClick,
   onDraftStateChange,
+  initialScrollTop,
+  initialTopLine,
   isVisible = true,
   onFirstVisible,
   onRenderComplete,
@@ -407,6 +409,15 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   const pendingAnchorRestoreRef = useRef<PendingPreviewAnchorRestore | null>(null)
   const displayedContent = activeEdit?.contentSnapshot ?? optimisticContent?.content ?? content
   const model = useMemo(() => createMarkdownPreviewModel(displayedContent), [displayedContent])
+  const initialScrollIdentity = `${documentKey ?? ''}\u0000${resource}`
+  const initialScrollTargetRef = useRef<{ identity: string; top: number } | null>(null)
+  if (initialScrollTargetRef.current?.identity !== initialScrollIdentity) {
+    initialScrollTargetRef.current = {
+      identity: initialScrollIdentity,
+      top: resolveInitialPreviewScrollTop(model, initialScrollTop, initialTopLine, fontSize, lineHeight),
+    }
+  }
+  const initialScrollTarget = initialScrollTargetRef.current.top
   const normalizedContent = model.normalizedContent
   const referenceDefinitionSource = useMemo(
     () => model.definitions.map((definition) => definition.rawSource).join('\n'),
@@ -467,9 +478,11 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
     wordWrap: boolean
     theme: string
   } | null>(null)
-  const [scrollState, setScrollState] = useState<{ scrollTop: number; viewportHeight: number; viewportWidth: number }>({ scrollTop: 0, viewportHeight: 800, viewportWidth: 0 })
+  const [scrollState, setScrollState] = useState<{ scrollTop: number; viewportHeight: number; viewportWidth: number }>({ scrollTop: initialScrollTarget, viewportHeight: 800, viewportWidth: 0 })
   const [measurementRevision, setMeasurementRevision] = useState(0)
   const scrollStateRef = useRef(scrollState)
+  const initialScrollIdentityRef = useRef<string | null>(null)
+  const initialScrollReadyRef = useRef(false)
   const overscanBlocks = 5
 
   const cancelPendingAnchorRestore = useCallback(() => {
@@ -644,7 +657,30 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   onRenderCompleteRef.current = onRenderComplete
 
   useLayoutEffect(() => {
-    if (!isVisible || firstVisibleRef.current || !rootRef.current) return
+    if (!isVisible) return
+    if (initialScrollIdentityRef.current === initialScrollIdentity) return
+    const container = rootRef.current?.parentElement
+    if (!container) return
+
+    initialScrollIdentityRef.current = initialScrollIdentity
+    scrollContainerRef.current = container
+    container.scrollTop = initialScrollTarget
+    lastObservedScrollTopRef.current = container.scrollTop
+    initialScrollReadyRef.current = true
+
+    if (Math.abs(scrollStateRef.current.scrollTop - container.scrollTop) >= 1) {
+      const nextState = {
+        scrollTop: container.scrollTop,
+        viewportHeight: container.clientHeight || scrollStateRef.current.viewportHeight,
+        viewportWidth: container.clientWidth,
+      }
+      scrollStateRef.current = nextState
+      setScrollState(nextState)
+    }
+  }, [initialScrollIdentity, initialScrollTarget, isVisible])
+
+  useLayoutEffect(() => {
+    if (!isVisible || !initialScrollReadyRef.current || firstVisibleRef.current || !rootRef.current) return
     firstVisibleRef.current = true
     onFirstVisibleRef.current?.()
   }, [documentKey, isVisible, resource])
@@ -2855,6 +2891,24 @@ function estimatePreviewBlockHeight(block: PreviewBlock, fontSize: number, lineH
     default:
       return Math.max(20, lines * baseLinePx * 1.15 + 12)
   }
+}
+
+function resolveInitialPreviewScrollTop(
+  model: MarkdownPreviewModel,
+  scrollTop: number | undefined,
+  topLine: number | undefined,
+  fontSize: number,
+  lineHeight: number,
+): number {
+  if (typeof scrollTop === 'number' && Number.isFinite(scrollTop)) return Math.max(0, scrollTop)
+  if (!Number.isInteger(topLine) || (topLine as number) < 1) return 0
+  const estimatedTop = getEstimatedPreviewTopForLine(
+    model,
+    topLine as number,
+    (block) => estimatePreviewBlockHeight(block, fontSize, lineHeight),
+    new Map(),
+  )
+  return Math.max(0, (estimatedTop ?? 0) - 32)
 }
 
 function getMountedPreviewLineForTop(

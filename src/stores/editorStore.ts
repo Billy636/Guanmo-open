@@ -8,6 +8,7 @@ import {
   applyBootSnapshot,
   createBootSnapshot,
   flushBootSnapshotWrite,
+  mergeBootSnapshotReadingPosition,
   readBootSnapshot,
   scheduleBootSnapshotWrite,
 } from '@/services/bootSnapshot'
@@ -639,11 +640,12 @@ export const useEditorStore = create<EditorState>()(
           rightPaneUserSelected,
           viewMode: snapshotMatchesActiveTab ? bootSnapshot!.viewMode : (saved.viewMode ?? current.viewMode),
           viewModeUsage: saved.viewModeUsage ?? current.viewModeUsage,
-          readingPositions: snapshotMatchesActiveTab && bootSnapshot?.readingPosition && activeTabId
-            ? {
-                ...(saved.readingPositions ?? current.readingPositions),
-                [activeTabId]: bootSnapshot.readingPosition,
-              }
+          readingPositions: snapshotMatchesActiveTab && bootSnapshot && activeTabId
+            ? mergeBootSnapshotReadingPosition(
+                saved.readingPositions ?? current.readingPositions,
+                activeTabId,
+                bootSnapshot,
+              )
             : (saved.readingPositions ?? current.readingPositions),
           recentFiles: dedupeRecentFiles(saved.recentFiles ?? current.recentFiles),
           pendingReveal: null,

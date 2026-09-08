@@ -33,7 +33,7 @@ import {
   PRODUCT_TOUR_DEMO_TAB_ID,
 } from '@/features/productTour/productTourContent'
 import { markStartupPoint } from '@/services/startupPerformance'
-import { hasBootSnapshotContent } from '@/services/bootSnapshot'
+import { getBootSnapshotDisplayContent, hasBootSnapshotContent, readBootSnapshot } from '@/services/bootSnapshot'
 
 const AiPanel = lazy(() => import('@/components/ai/AiPanel').then((module) => ({ default: module.AiPanel })))
 const EditorArea = lazy(() => import('../editor/EditorArea').then((module) => ({ default: module.EditorArea })))
@@ -44,18 +44,25 @@ const ProductTourOverlay = lazy(() => import('@/features/productTour/ProductTour
 function BootDocumentFallback() {
   const activeTab = useEditorStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId))
   const snapshotContent = activeTab && hasBootSnapshotContent(activeTab) ? activeTab.content : null
+  const snapshot = snapshotContent === null ? null : readBootSnapshot()
+  const snapshotTopLine = snapshot?.readingPosition?.topLine
+  const hasPositionedSnapshot = !snapshot?.readingPosition
+    || (Number.isInteger(snapshotTopLine) && (snapshotTopLine as number) >= 1)
+  const display = snapshotContent === null
+    ? null
+    : getBootSnapshotDisplayContent(snapshotContent, snapshot?.readingPosition?.topLine)
 
   useLayoutEffect(() => {
-    if (snapshotContent !== null) {
+    if (display !== null && hasPositionedSnapshot) {
       markStartupPoint('active-document-first-visible')
     }
-  }, [snapshotContent])
+  }, [display, hasPositionedSnapshot])
 
   if (snapshotContent === null) return null
 
   return (
     <div className="h-full w-full overflow-auto bg-gm-surface px-8 py-6 text-gm-text-primary" aria-label="启动文档快照">
-      <pre className="m-0 whitespace-pre-wrap break-words font-[inherit] text-body leading-relaxed">{snapshotContent}</pre>
+      <pre className="m-0 whitespace-pre-wrap break-words font-[inherit] text-body leading-relaxed" data-boot-start-line={display?.startLine ?? 1}>{display?.content}</pre>
     </div>
   )
 }

@@ -3,8 +3,10 @@ import type { Tab, ViewMode } from '@/stores/editorStore'
 import { isWebRuntime } from '@/services/runtimeCapabilities'
 
 export const BOOT_SNAPSHOT_STORAGE_KEY = 'guanmo-boot-snapshot'
-export const BOOT_SNAPSHOT_VERSION = 1
+export const BOOT_SNAPSHOT_VERSION = 2
 export const BOOT_SNAPSHOT_CONTENT_LIMIT = 256_000
+
+export type BootSnapshotReadingPositionScope = 'shared' | 'left'
 
 export interface BootSnapshot {
   version: typeof BOOT_SNAPSHOT_VERSION
@@ -17,6 +19,7 @@ export interface BootSnapshot {
   } | null
   viewMode: ViewMode
   readingPosition: ReadingPosition | null
+  readingPositionScope: BootSnapshotReadingPositionScope | null
 }
 
 interface BootSnapshotState {
@@ -41,9 +44,9 @@ function isViewMode(value: unknown): value is ViewMode {
 export function parseBootSnapshot(raw: string | null): BootSnapshot | null {
   if (!raw) return null
   try {
-    const value = JSON.parse(raw) as Partial<BootSnapshot>
+    const value = JSON.parse(raw) as Omit<Partial<BootSnapshot>, 'version'> & { version?: number }
     const activeTab = value.activeTab
-    if (value.version !== BOOT_SNAPSHOT_VERSION || !isViewMode(value.viewMode)) return null
+    if ((value.version !== 1 && value.version !== BOOT_SNAPSHOT_VERSION) || !isViewMode(value.viewMode)) return null
     if (activeTab !== null && (
       !activeTab
       || typeof activeTab.id !== 'string'
@@ -52,7 +55,19 @@ export function parseBootSnapshot(raw: string | null): BootSnapshot | null {
       || (activeTab.content !== null && typeof activeTab.content !== 'string')
       || (typeof activeTab.content === 'string' && activeTab.content.length > BOOT_SNAPSHOT_CONTENT_LIMIT)
     )) return null
-    return value as BootSnapshot
+    if (value.version === 1) {
+      return {
+        ...value,
+        version: BOOT_SNAPSHOT_VERSION,
+        readingPosition: value.viewMode === 'dual-preview' ? value.readingPosition ?? null : null,
+        readingPositionScope: value.viewMode === 'dual-preview' && value.readingPosition ? 'left' : null,
+      } as BootSnapshot
+    }
+    if (value.readingPositionScope !== undefined
+      && value.readingPositionScope !== null
+      && value.readingPositionScope !== 'shared'
+      && value.readingPositionScope !== 'left') return null
+    return { ...value, readingPositionScope: value.readingPositionScope ?? null } as BootSnapshot
   } catch {
     return null
   }
@@ -70,15 +85,60 @@ export function createBootSnapshot(state: BootSnapshotState): BootSnapshot {
           : null,
       }
     : null
+  const readingPositionScope = activeTab
+    ? state.viewMode === 'dual-preview' && state.readingPositions[`${activeTab.id}:left`]
+      ? 'left' as const
+      : state.viewMode !== 'dual-preview' && state.readingPositions[activeTab.id]
+        ? 'shared' as const
+        : null
+    : null
   return {
     version: BOOT_SNAPSHOT_VERSION,
     capturedAt: Date.now(),
     activeTab: snapshotTab,
     viewMode: state.viewMode,
-    readingPosition: activeTab
-      ? state.readingPositions[`${activeTab.id}:left`] ?? state.readingPositions[activeTab.id] ?? null
+    readingPosition: activeTab && readingPositionScope
+      ? state.readingPositions[readingPositionScope === 'left' ? `${activeTab.id}:left` : activeTab.id] ?? null
       : null,
+    readingPositionScope,
   }
+}
+
+export function getBootSnapshotReadingPositionKey(snapshot: BootSnapshot, tabId: string): string | null {
+  if (!snapshot.readingPosition || !snapshot.readingPositionScope) return null
+  return snapshot.readingPositionScope === 'left' ? `${tabId}:left` : tabId
+}
+
+export function mergeBootSnapshotReadingPosition(
+  positions: Record<string, ReadingPosition>,
+  tabId: string,
+  snapshot: BootSnapshot,
+): Record<string, ReadingPosition> {
+  const key = getBootSnapshotReadingPositionKey(snapshot, tabId)
+  if (!key || !snapshot.readingPosition) return positions
+  return { ...positions, [key]: snapshot.readingPosition }
+}
+
+export function getBootSnapshotDisplayContent(content: string, topLine: number | undefined): {
+  content: string
+  startLine: number
+} {
+  if (!Number.isInteger(topLine) || (topLine as number) < 1) return { content, startLine: 1 }
+
+  const lineStarts = [0]
+  for (let index = 0; index < content.length;) {
+    if (content[index] === '\r') {
+      index += content[index + 1] === '\n' ? 2 : 1
+      lineStarts.push(index)
+    } else if (content[index] === '\n') {
+      index += 1
+      lineStarts.push(index)
+    } else {
+      index += 1
+    }
+  }
+  const startIndex = Math.min((topLine as number) - 1, lineStarts.length - 1)
+  return { content: content.slice(lineStarts[startIndex]), startLine: startIndex + 1 }
 }
 
 export function applyBootSnapshot(tabs: Tab[], activeTabId: string | null, snapshot: BootSnapshot | null): Tab[] {

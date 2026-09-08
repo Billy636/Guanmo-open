@@ -523,6 +523,7 @@ export function EditorArea() {
     readingPositionsRef,
     isRestoringScrollRef,
     getStoredPreviewTop,
+    getStoredPreviewPosition,
     getStoredEditorTop,
     saveEditorPositionForTab,
     savePreviewReadingPosition,
@@ -530,6 +531,8 @@ export function EditorArea() {
     restoreEditorReadingPosition,
     restorePreviewReadingPosition,
   } = readingPositionBridge
+  const leftInitialPreviewPosition = getStoredPreviewPosition(activeTab?.id, 'left')
+  const rightInitialPreviewPosition = getStoredPreviewPosition(rightTab?.id, 'right')
   const previewSelectionBridge = usePreviewSelectionBridge({
     activeTab,
     rightTab,
@@ -554,7 +557,10 @@ export function EditorArea() {
       previewSwitchingTabId === activeTab.id
       || (
         restoredPreviewKeysRef.current.left !== activeTab.id
-        && getStoredPreviewTop(activeTab.id) > 0
+        && (
+          getStoredPreviewTop(activeTab.id) > 0
+          || (leftInitialPreviewPosition?.topLine ?? 1) > 1
+        )
       )
     )
   )
@@ -562,7 +568,10 @@ export function EditorArea() {
   const rightPreviewMasked = Boolean(
     rightTab?.id
     && restoredPreviewKeysRef.current.right !== rightTab.id
-    && getStoredPreviewTop(rightTab.id, 'right') > 0
+    && (
+      getStoredPreviewTop(rightTab.id, 'right') > 0
+      || (rightInitialPreviewPosition?.topLine ?? 1) > 1
+    )
   )
 
   // 预览内容更新（版本变化）只恢复预览自身位置，保证右侧渲染稳定；
@@ -1617,6 +1626,8 @@ export function EditorArea() {
                     onHeadingClick={handleLeftPreviewHeadingClick}
                     onTaskToggle={activeTab ? handleActiveTaskToggle : undefined}
                     onDraftStateChange={handleLeftDraftStateChange}
+                    initialScrollTop={leftInitialPreviewPosition?.previewScrollTop}
+                    initialTopLine={leftInitialPreviewPosition?.topLine}
                     isVisible={leftPreviewVisible && previewContentReady}
                     onFirstVisible={() => handlePreviewFirstVisible(activeTab?.id ?? null)}
                     onRenderComplete={handlePreviewRenderComplete}
@@ -1672,6 +1683,8 @@ export function EditorArea() {
                     onBlockCommit={handlePreviewBlockCommit}
                     onTaskToggle={handleRightTaskToggle}
                     onDraftStateChange={handleRightDraftStateChange}
+                    initialScrollTop={rightInitialPreviewPosition?.previewScrollTop}
+                    initialTopLine={rightInitialPreviewPosition?.topLine}
                     isVisible={viewMode === 'dual-preview'}
                     resource="right-preview"
                     readingMarks={rightReadingMarks}
