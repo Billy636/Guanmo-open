@@ -15,6 +15,8 @@ export type AgentToolName =
   | 'list_memories'
   | 'save_memory'
   | 'search_knowledge'
+  | 'search_reading_artifacts'
+  | 'get_reading_artifact'
   | 'list_database_contents'
   | 'read_selection_context'
   | 'list_current_edit_targets'
@@ -30,6 +32,7 @@ export type AgentToolName =
 const CAPABILITY_TOOLS: Record<Capability, AgentToolName[]> = {
   memory: ['search_memory', 'list_memories'],
   knowledge: ['search_knowledge', 'list_database_contents'],
+  artifact_read: ['search_reading_artifacts', 'get_reading_artifact'],
   selection_context: ['read_selection_context'],
   file_read: ['read_context_file'],
   file_write: ['list_current_edit_targets', 'replace_current_tab_text'],
@@ -52,6 +55,8 @@ const READ_TOOLS: AgentToolName[] = [
   'search_memory',
   'list_memories',
   'search_knowledge',
+  'search_reading_artifacts',
+  'get_reading_artifact',
   'list_database_contents',
   'read_selection_context',
   'list_current_edit_targets',
@@ -141,6 +146,7 @@ export function getCapabilityHint(capability: Capability): string {
   const hints: Record<Capability, string> = {
     memory: '用户问题涉及长期记忆，已自动检索记忆库',
     knowledge: '用户问题涉及本地知识库，已自动检索文档',
+    artifact_read: '用户问题涉及已保存的阅读成果，已自动检索成果',
     selection_context: '用户问题依赖选区附近内容，已自动读取受限的选区上下文',
     file_read: '用户问题涉及文件读取，已自动读取文件',
     file_write: '用户问题涉及文件修改，需要用户确认',
@@ -159,6 +165,8 @@ export function getToolTokenBudget(toolName: string): number {
     search_memory: 3000,
     list_memories: 4000,
     search_knowledge: 5000,
+    search_reading_artifacts: 3000,
+    get_reading_artifact: 5000,
     list_database_contents: 5000,
     read_selection_context: 1400,
     list_current_edit_targets: 1000,

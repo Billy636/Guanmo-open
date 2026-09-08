@@ -6,6 +6,7 @@ export const TOGGLE_READING_ARTIFACTS_EVENT = 'guanmo:toggle-reading-artifacts'
 export type AiPanelNavigation = {
   mode: 'open' | 'toggle'
   view: 'chat' | 'artifacts'
+  artifactKey?: string
 }
 
 let pendingPanelNavigation: AiPanelNavigation | null = null
@@ -37,6 +38,10 @@ export function requestToggleAiChat() {
 
 export function requestOpenReadingArtifacts() {
   requestPanelNavigation(OPEN_READING_ARTIFACTS_EVENT, { mode: 'open', view: 'artifacts' })
+}
+
+export function requestOpenReadingArtifact(key: string) {
+  requestPanelNavigation(OPEN_READING_ARTIFACTS_EVENT, { mode: 'open', view: 'artifacts', artifactKey: key })
 }
 
 export function requestToggleReadingArtifacts() {

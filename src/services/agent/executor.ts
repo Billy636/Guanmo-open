@@ -1,5 +1,5 @@
 import type { AgentConfig, AgentProgressStage, AgentStep, AgentResult, AgentRunRequest, RoutingDecision } from './types'
-import type { ChatMessage, ChatMessageSource } from '@/services/ai/types'
+import type { ChatMessage, ChatMessageSource, ReadingArtifactMessageReference } from '@/services/ai/types'
 import { getAiClient, isAiReady } from '@/services/ai/aiClient'
 import { getAllTools, getTool, getToolDescriptions, getToolsForLLM } from './toolRegistry'
 import { registerBuiltinTools } from './tools'
@@ -40,6 +40,7 @@ import {
   WEB_COMPARISON_ANSWER_PROMPT,
 } from './answerInstructions'
 import { dropOldestCompleteTurns, isModelContextOverflowError } from '@/services/ai/contextBudget'
+import { extractReadingArtifactReferences, mergeReadingArtifactReferences } from './readingArtifactReferences'
 
 let toolsRegistered = false
 
@@ -863,6 +864,7 @@ async function runAgentInternal({
   let toolCalls = 0
   let editToolCalls = 0
   let sourceRegistry = createSourceReferenceRegistry()
+  let artifactReferences: ReadingArtifactMessageReference[] = []
   const calledToolNames: string[] = []
   const selectionContextReadLevels = new Map<string, 1 | 2>()
   const readResultCache = new Map<string, Promise<ToolExecutionResult>>()
@@ -870,7 +872,12 @@ async function runAgentInternal({
   const sourceMetadata = () => ({
     sources: sourceRegistry.entries.map((entry) => entry.source),
     sourceRegistry,
+    ...(artifactReferences.length ? { artifactReferences } : {}),
   })
+  const rememberArtifactReferences = (name: string, result: string) => {
+    const next = extractReadingArtifactReferences(name, result)
+    if (next.length) artifactReferences = mergeReadingArtifactReferences(artifactReferences, next)
+  }
   const prepareVisibleToolResult = (name: string, result: string): string => {
     const prepared = prepareAgentToolResultForModel(sourceRegistry, name, result)
     sourceRegistry = prepared.registry
@@ -1022,6 +1029,7 @@ async function runAgentInternal({
     )
 
     for (const { name, result, rawResult, executed } of repairResults) {
+      rememberArtifactReferences(name, rawResult || result)
       if (executed !== false) {
         calledToolNames.push(name)
         toolCalls++
@@ -1262,6 +1270,7 @@ async function runAgentInternal({
 
     // 添加工具结果到消息
     for (const { name, result, rawResult, executed, reused } of toolResults) {
+      rememberArtifactReferences(name, rawResult || result)
       pushStep({
         type: 'observation',
         content: result,

@@ -87,6 +87,25 @@ export interface WebChatMessageSource {
 
 export type ChatMessageSource = LocalChatMessageSource | WebChatMessageSource
 
+export interface ReadingArtifactMessageReference {
+  key: `mark:${string}` | `ai:${string}`
+  backing: 'reading_mark' | 'reading_artifact'
+  type: 'highlight' | 'annotation' | 'summary' | 'question_set' | 'reading_note' | 'ai_explanation'
+  title: string
+  preview: string
+  documentRefs: Array<{
+    documentId: string
+    filePath?: string
+    fileName: string
+    locations: Array<{
+      startLine?: number
+      endLine?: number
+      startOffset?: number
+      endOffset?: number
+    }>
+  }>
+}
+
 export interface EditConfirmation {
   id: string
   messageId?: string
@@ -150,6 +169,7 @@ export interface ChatMessage {
   sources?: ChatMessageSource[]
   /** 本轮正文中实际确认引用的来源 ID；缺失时兼容旧消息并按未确认来源展示。 */
   referencedSourceIds?: SourceReferenceId[]
+  artifactReferences?: ReadingArtifactMessageReference[]
   editConfirmation?: EditConfirmation
   actionProposal?: ActionProposal
   hidden?: boolean

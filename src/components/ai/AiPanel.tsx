@@ -22,6 +22,7 @@ import type {
   ChatMessageSource,
   LocalChatMessageSource,
   ActionProposal,
+  ReadingArtifactMessageReference,
 } from '@/services/ai/types'
 import { resolveStoredSourceReferences, type SourceReferenceId } from '@/services/ai/sourceReferences'
 import { AI_SHORTCUT_SUBMIT_EVENT } from '@/services/aiContext'
@@ -31,6 +32,7 @@ import {
   OPEN_READING_ARTIFACTS_EVENT,
   TOGGLE_AI_CHAT_EVENT,
   TOGGLE_READING_ARTIFACTS_EVENT,
+  requestOpenReadingArtifact,
 } from '@/services/aiPanelNavigation'
 import { applyPendingEditCommand } from '@/services/pendingEditCommand'
 import { saveAssistantMessageAsMarkdown } from '@/services/assistantMessageExport'
@@ -113,6 +115,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   const [reasoningMode, setReasoningMode] = useState<'off' | 'on'>('off')
   const [resetManualToggle, setResetManualToggle] = useState(0)
   const [panelView, setPanelView] = useState<'chat' | 'artifacts' | 'reminders'>('chat')
+  const [artifactFocusKey, setArtifactFocusKey] = useState<string | null>(null)
   const [reminders, setReminders] = useState<ReadingReminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(false)
   const saveArtifactFromMessage = useReadingArtifactsStore((s) => s.saveArtifactFromMessage)
@@ -155,14 +158,16 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   }, [databaseEnabled, panelView])
 
   useEffect(() => {
-    const applyNavigation = (navigation: { mode: 'open' | 'toggle'; view: 'chat' | 'artifacts' }) => {
+    const applyNavigation = (navigation: { mode: 'open' | 'toggle'; view: 'chat' | 'artifacts'; artifactKey?: string }) => {
       if (navigation.view === 'artifacts' && !databaseEnabled) return
       if (navigation.mode === 'open') {
         setPanelView(navigation.view)
+        setArtifactFocusKey(navigation.view === 'artifacts' ? navigation.artifactKey ?? null : null)
       } else if (panelView === navigation.view) {
         useAppStore.getState().closeAiPanel()
       } else {
         setPanelView(navigation.view)
+        setArtifactFocusKey(navigation.view === 'artifacts' ? navigation.artifactKey ?? null : null)
       }
     }
     const handleNavigation = (fallback: { mode: 'open' | 'toggle'; view: 'chat' | 'artifacts' }) => {
@@ -465,6 +470,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
     streamScrollInterruptedRef.current = false
     shouldScrollAfterReturnRef.current = true
     setPanelView('chat')
+    setArtifactFocusKey(null)
   }, [])
 
   const handleSaveAssistantAsMarkdown = useCallback(async (
@@ -591,7 +597,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
             type={panelView === 'artifacts' ? 'default' : 'text'}
             size="small"
             disabled={!databaseEnabled}
-            onClick={() => { if (databaseEnabled) setPanelView('artifacts') }}
+            onClick={() => { if (databaseEnabled) { setArtifactFocusKey(null); setPanelView('artifacts') } }}
             title={databaseEnabled ? '阅读成果' : '阅读成果仅桌面版可用'}
             icon={<BookOpen size={15} strokeWidth={1.7} aria-hidden="true" />}
           />
@@ -652,7 +658,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
       {/* Chat Content - 可以滚动到控制栏下面 */}
       <div ref={chatContainerRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden min-w-0 bg-gm-surface ${panelView === 'chat' ? 'pb-32' : 'pb-0'}`}>
         {panelView === 'artifacts' ? (
-          <ReadingArtifactCenter onOpenAiSource={handleOpenArtifactSource} />
+          <ReadingArtifactCenter onOpenAiSource={handleOpenArtifactSource} focusKey={artifactFocusKey} onCloseFocus={() => setArtifactFocusKey(null)} />
         ) : panelView === 'reminders' ? (
           READING_REMINDER_FEATURE_AVAILABLE ? (
             <ReadingRemindersPanel
@@ -730,6 +736,8 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
                   sources={msg.sources}
                   referencedSourceIds={msg.referencedSourceIds}
                   onOpenSource={handleOpenRagSource}
+                  artifactReferences={msg.artifactReferences}
+                  onOpenArtifact={(key) => requestOpenReadingArtifact(key)}
                   onSaveAsMarkdown={
                     msg.role === 'assistant'
                       && Boolean((msg.displayContent ?? msg.content).trim())
@@ -1464,6 +1472,8 @@ export const ChatBubble = memo(function ChatBubble({
   visualId,
   sources,
   referencedSourceIds,
+  artifactReferences,
+  onOpenArtifact,
   onOpenSource,
   onSaveAsMarkdown,
   onSaveAsArtifact,
@@ -1475,6 +1485,8 @@ export const ChatBubble = memo(function ChatBubble({
   visualId?: string | null
   sources?: ChatMessageSource[]
   referencedSourceIds?: SourceReferenceId[]
+  artifactReferences?: ReadingArtifactMessageReference[]
+  onOpenArtifact?: (key: string) => void
   onOpenSource?: (source: LocalChatMessageSource) => void
   onSaveAsMarkdown?: () => void
   onSaveAsArtifact?: (type: ReadingArtifactType) => void
@@ -1608,6 +1620,9 @@ export const ChatBubble = memo(function ChatBubble({
               onOpenSource={onOpenSource}
             />
           )}
+          {!isUser && artifactReferences?.length && onOpenArtifact && (
+            <ReadingArtifactMessageCards references={artifactReferences} onOpen={onOpenArtifact} />
+          )}
         </div>
         {canSave && (
           <div
@@ -1660,6 +1675,34 @@ export const ChatBubble = memo(function ChatBubble({
     </div>
   )
 })
+
+function ReadingArtifactMessageCards({
+  references,
+  onOpen,
+}: {
+  references: ReadingArtifactMessageReference[]
+  onOpen: (key: string) => void
+}) {
+  return (
+    <div className="mt-3 border-t border-gm-border-subtle pt-2" aria-label="相关阅读成果">
+      <div className="mb-1 text-micro font-semibold text-gm-text-secondary">相关阅读成果</div>
+      <div className="space-y-1">
+        {references.slice(0, 10).map((reference) => (
+          <button
+            key={reference.key}
+            type="button"
+            className="block w-full rounded-lg border border-gm-border-subtle bg-gm-surface px-2 py-1.5 text-left transition-colors hover:bg-gm-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary"
+            onClick={() => onOpen(reference.key)}
+          >
+            <div className="truncate text-caption font-medium text-gm-text">{reference.title}</div>
+            {reference.preview && <div className="mt-0.5 line-clamp-2 text-micro text-gm-text-tertiary">{reference.preview}</div>}
+            <div className="mt-1 text-micro text-gm-primary">打开成果详情</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const ARTIFACT_TYPE_LABELS: Record<ReadingArtifactType, string> = {
   summary: '摘要',

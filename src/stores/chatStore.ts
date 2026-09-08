@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActionProposal, ChatMessage, ChatMessageContextMeta, ChatMessageSource, EditConfirmation } from '@/services/ai/types'
+import type { ActionProposal, ChatMessage, ChatMessageContextMeta, ChatMessageSource, EditConfirmation, ReadingArtifactMessageReference } from '@/services/ai/types'
 import { normalizeSafeWebSourceUrl, type SourceReferenceId } from '@/services/ai/sourceReferences'
 import type { AgentStep, AgentTaskContext } from '@/services/agent/types'
 import type { ContextTag } from '@/types/contextTag'
@@ -78,6 +78,7 @@ interface ChatState {
   updateMessageContextMeta: (id: string, contextMeta: ChatMessageContextMeta) => void
   updateMessageSources: (id: string, sources: ChatMessageSource[]) => void
   updateMessageReferencedSourceIds: (id: string, referencedSourceIds: SourceReferenceId[]) => void
+  updateMessageArtifactReferences: (id: string, artifactReferences: ReadingArtifactMessageReference[]) => void
   removeLastMessage: () => void
   removeMessageById: (id: string) => void
   setStreaming: (v: boolean) => void
@@ -119,6 +120,7 @@ export function encodeChatMessageMetadata(msg: ChatMessage): string | undefined 
   if (msg.contextMeta) metadata.contextMeta = msg.contextMeta
   if (msg.sources?.length) metadata.sources = msg.sources
   if (msg.referencedSourceIds) metadata.referencedSourceIds = msg.referencedSourceIds
+  if (msg.artifactReferences?.length) metadata.artifactReferences = msg.artifactReferences
   if (msg.editConfirmation) metadata.editConfirmation = msg.editConfirmation
   if (msg.actionProposal) metadata.actionProposal = msg.actionProposal
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined
@@ -186,6 +188,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   updateMessageReferencedSourceIds: (id, referencedSourceIds) => set((s) => ({
     messages: s.messages.map((msg) => (msg.id === id ? { ...msg, referencedSourceIds } : msg)),
+  })),
+
+  updateMessageArtifactReferences: (id, artifactReferences) => set((s) => ({
+    messages: s.messages.map((msg) => (msg.id === id ? { ...msg, artifactReferences } : msg)),
   })),
 
   removeLastMessage: () => set((s) => {
@@ -498,6 +504,7 @@ function toChatMessage(
   let contextMeta: ChatMessageContextMeta | undefined
   let sources: ChatMessageSource[] | undefined
   let referencedSourceIds: SourceReferenceId[] | undefined
+  let artifactReferences: ReadingArtifactMessageReference[] | undefined
   let editConfirmation: EditConfirmation | undefined
   let actionProposal: ActionProposal | undefined
 
@@ -509,6 +516,7 @@ function toChatMessage(
       contextMeta = sanitizeContextMeta(meta.contextMeta)
       sources = sanitizeMessageSources(meta.sources)
       referencedSourceIds = sanitizeSourceReferenceIds(meta.referencedSourceIds)
+      artifactReferences = sanitizeArtifactReferences(meta.artifactReferences)
       editConfirmation = decodeEditConfirmation(meta.editConfirmation)
       actionProposal = decodeActionProposal(meta.actionProposal)
     } catch {
@@ -529,6 +537,7 @@ function toChatMessage(
     contextMeta,
     sources,
     referencedSourceIds,
+    artifactReferences,
     editConfirmation,
     actionProposal,
     sessionId: row.session_id,
@@ -580,6 +589,44 @@ function sanitizeMessageSources(value: unknown): ChatMessageSource[] | undefined
   })
 
   return normalized.length > 0 ? normalized : undefined
+}
+
+function sanitizeArtifactReferences(value: unknown): ReadingArtifactMessageReference[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const allowedTypes = new Set(['highlight', 'annotation', 'summary', 'question_set', 'reading_note', 'ai_explanation'])
+  const refs: ReadingArtifactMessageReference[] = []
+  const seen = new Set<string>()
+  for (const valueItem of value) {
+    if (!isPlainObject(valueItem)) continue
+    const key = typeof valueItem.key === 'string' ? valueItem.key : ''
+    if (!/^(mark|ai):[^\s:]+$/.test(key) || seen.has(key)) continue
+    if (valueItem.backing !== 'reading_mark' && valueItem.backing !== 'reading_artifact') continue
+    if (typeof valueItem.type !== 'string' || !allowedTypes.has(valueItem.type)) continue
+    if (typeof valueItem.title !== 'string' || typeof valueItem.preview !== 'string' || !Array.isArray(valueItem.documentRefs)) continue
+    const documentRefs = valueItem.documentRefs.flatMap((doc): ReadingArtifactMessageReference['documentRefs'] => {
+      if (!isPlainObject(doc) || typeof doc.documentId !== 'string' || typeof doc.fileName !== 'string' || !Array.isArray(doc.locations)) return []
+      const locations = doc.locations.flatMap((location) => {
+        if (!isPlainObject(location)) return []
+        const clean: NonNullable<ReadingArtifactMessageReference['documentRefs'][number]['locations']>[number] = {}
+        for (const field of ['startLine', 'endLine', 'startOffset', 'endOffset'] as const) {
+          if (typeof location[field] === 'number' && Number.isFinite(location[field])) clean[field] = location[field]
+        }
+        return [clean]
+      })
+      return [{ documentId: doc.documentId, fileName: doc.fileName, ...(typeof doc.filePath === 'string' ? { filePath: doc.filePath } : {}), locations }]
+    })
+    seen.add(key)
+    refs.push({
+      key: key as ReadingArtifactMessageReference['key'],
+      backing: valueItem.backing,
+      type: valueItem.type as ReadingArtifactMessageReference['type'],
+      title: valueItem.title.slice(0, 200),
+      preview: valueItem.preview.slice(0, 12000),
+      documentRefs: documentRefs.slice(0, 8),
+    })
+    if (refs.length >= 10) break
+  }
+  return refs.length ? refs : undefined
 }
 
 export function sanitizeSourceReferenceIds(value: unknown): SourceReferenceId[] | undefined {

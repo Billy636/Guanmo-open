@@ -4,6 +4,8 @@ import type { RegisteredToolDefinition, ToolDefinition } from './types'
 const tools = new Map<string, RegisteredToolDefinition>()
 
 const TOOL_USAGE_GUIDANCE: Record<string, string> = {
+  search_reading_artifacts: '使用时机：用户要查找、回顾或比较已保存的高亮、批注、摘要、问题集、阅读笔记和 AI 解读时调用。只返回成果保存时的内容和引用快照，不读取来源文档全文，不产生写入。',
+  get_reading_artifact: '使用时机：已有 mark:<id> 或 ai:<id> 稳定键、需要查看单条成果完整保存内容时调用。正文可能被截断；查看原文必须由用户点击成果详情中的来源入口。',
   search_knowledge: [
     '使用时机：当用户要在本地知识库、笔记、文档、RAG、已索引资料中查找“有没有、在哪里、哪些文件提到、相关资料”时必须优先调用。',
     '返回内容：命中文件、行号、片段和索引状态；可用于回答“相关内容在哪里/大意是什么”。若需要阅读全文、总结整篇或改写文件，必须让用户把目标文件加入上下文，或在已授权时再读文件。',

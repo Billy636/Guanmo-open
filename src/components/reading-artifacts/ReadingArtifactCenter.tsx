@@ -10,6 +10,7 @@ import {
   loadReadingArtifactDocumentSummariesPage,
   type ReadingArtifactDocumentPage,
 } from '@/services/database/readingArtifactCenter'
+import { loadReadingArtifactItemByKeyCommand } from '@/services/agent/artifactCommands'
 import { isDatabaseReady } from '@/services/database/db'
 import { createMarkdownPreviewModel, getSourceOffsetForLine, type MarkdownPreviewModel } from '@/services/markdownPreviewModel'
 import { readRememberedMarkdownFileForOpen } from '@/services/markdownFileOpenPolicy'
@@ -32,7 +33,7 @@ import { useReadingArtifactsStore } from '@/stores/readingArtifactsStore'
 import { useReadingMarksStore } from '@/stores/readingMarksStore'
 
 type DocumentAvailability = 'checking' | 'available' | 'unavailable'
-type CenterView = 'recent' | 'documents' | 'detail'
+type CenterView = 'recent' | 'documents' | 'detail' | 'focus'
 type DetailFilter = 'all' | 'highlight' | 'annotation' | 'ai'
 
 const ALL_TYPES: ReadingArtifactItemType[] = [
@@ -135,8 +136,12 @@ function positionForItem(
 
 export function ReadingArtifactCenter({
   onOpenAiSource,
+  focusKey,
+  onCloseFocus,
 }: {
   onOpenAiSource: (artifact: ReadingArtifact, documentRef: ReadingArtifactDocumentRef) => void | Promise<void>
+  focusKey?: string | null
+  onCloseFocus?: () => void
 }) {
   const workspaceRoots = useAppStore((state) => state.workspaceRoots)
   const updateMark = useReadingMarksStore((state) => state.update)
@@ -176,7 +181,10 @@ export function ReadingArtifactCenter({
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLButtonElement | null>(null)
   const previousViewRef = useRef<CenterView>('recent')
-  const scrollPositionsRef = useRef<Record<CenterView, number>>({ recent: 0, documents: 0, detail: 0 })
+  const scrollPositionsRef = useRef<Record<CenterView, number>>({ recent: 0, documents: 0, detail: 0, focus: 0 })
+  const focusReturnViewRef = useRef<CenterView>('recent')
+  const [focusLoading, setFocusLoading] = useState(false)
+  const [focusError, setFocusError] = useState<string | null>(null)
 
   const activeTypes = useMemo(() => {
     if (view !== 'detail' || detailFilter === 'all') return [...selectedTypes]
@@ -185,7 +193,7 @@ export function ReadingArtifactCenter({
   }, [detailFilter, selectedTypes, view])
 
   const queryOptions = useMemo(() => ({
-    view: view === 'documents' ? 'recent' as const : view,
+    view: view === 'detail' ? 'detail' as const : 'recent' as const,
     document: view === 'detail' ? selectedDocument : undefined,
     documentId: view === 'detail' ? (selectedDocument?.documentId ?? null) : undefined,
     documentPath: view === 'detail' ? selectedDocument?.filePath : undefined,
@@ -235,7 +243,7 @@ export function ReadingArtifactCenter({
   }, [activeTypes, query, queryOptions, selectedDocument, view, workspaceRoots])
 
   useEffect(() => {
-    if (view === 'documents') {
+    if (view === 'documents' || view === 'focus') {
       requestSequenceRef.current += 1
       return
     }
@@ -248,6 +256,37 @@ export function ReadingArtifactCenter({
       void loadItems(false)
     }
   }, [loadItems, view])
+
+  useEffect(() => {
+    if (!focusKey) return
+    if (view !== 'focus') focusReturnViewRef.current = view
+    const requestId = ++requestSequenceRef.current
+    setView('focus')
+    setFocusLoading(true)
+    setFocusError(null)
+    void loadReadingArtifactItemByKeyCommand(focusKey, workspaceRoots)
+      .then((loaded) => {
+        if (requestId !== requestSequenceRef.current) return
+        if (!loaded) {
+          setFocusError('该阅读成果已不存在或无法读取')
+          setLoadedItems([])
+          setLoadedAiArtifacts([])
+          return
+        }
+        loadedItemsRef.current = [loaded.item]
+        loadedAiArtifactsRef.current = loaded.artifact ? [loaded.artifact] : []
+        setLoadedItems([loaded.item])
+        setLoadedAiArtifacts(loaded.artifact ? [loaded.artifact] : [])
+        setItemsTotal(1)
+        if (loaded.item.source === 'ai') setExpandedAiKey(loaded.item.key)
+      })
+      .catch((error) => {
+        if (requestId === requestSequenceRef.current) setFocusError(error instanceof Error ? error.message : '读取成果失败')
+      })
+      .finally(() => {
+        if (requestId === requestSequenceRef.current) setFocusLoading(false)
+      })
+  }, [focusKey, view, workspaceRoots])
 
   const loadDocuments = useCallback(async (append: boolean) => {
     const offset = append ? documentPageRef.current.documents.length : 0
@@ -283,6 +322,7 @@ export function ReadingArtifactCenter({
 
   useEffect(() => {
     if (marksRevision === 0 && artifactsRevision === 0) return
+    if (view === 'focus') return
     if (view === 'documents') void loadDocuments(false)
     else void loadItems(false)
   }, [artifactsRevision, loadDocuments, loadItems, marksRevision, view])
@@ -396,7 +436,7 @@ export function ReadingArtifactCenter({
 
   const loading = view === 'documents'
     ? documentsLoading && documentPage.documents.length === 0
-    : itemsLoading && items.length === 0
+    : view === 'focus' ? focusLoading : itemsLoading && items.length === 0
   const openReadingMark = async (markId: string) => {
     try {
       await navigateToReadingMark(markId)
@@ -449,7 +489,7 @@ export function ReadingArtifactCenter({
   return (
     <div ref={rootRef} className="min-h-full bg-gm-canvas px-4 py-3 text-gm-text">
       <div>
-          {view !== 'detail' ? (
+          {view !== 'detail' && view !== 'focus' ? (
             <>
               <nav aria-label="阅读成果视图" role="tablist" className="mb-3 flex items-center gap-5 border-b border-gm-border-subtle">
                 {(['recent', 'documents'] as const).map((value) => (
@@ -490,12 +530,13 @@ export function ReadingArtifactCenter({
               transition={reducedMotion ? { duration: 0 } : { duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
               className="mb-3 flex items-center gap-2"
             >
-              <button type="button" aria-label="返回按文档" onClick={() => changeView('documents')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gm-text-tertiary hover:bg-gm-surface-hover hover:text-gm-primary focus-visible:bg-gm-surface-hover focus-visible:outline-none">
+              <button type="button" aria-label={view === 'focus' ? '返回阅读成果' : '返回按文档'} onClick={() => { if (view === 'focus') onCloseFocus?.(); changeView(view === 'focus' ? focusReturnViewRef.current : 'documents') }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gm-text-tertiary hover:bg-gm-surface-hover hover:text-gm-primary focus-visible:bg-gm-surface-hover focus-visible:outline-none">
                 <ChevronLeft size={17} strokeWidth={1.8} aria-hidden="true" />
               </button>
               <div className="min-w-0 flex-1">
-                <h2 ref={detailHeadingRef} tabIndex={-1} className="truncate text-body font-bold outline-none">{selectedDocument?.fileName ?? '独立成果'}</h2>
-                {selectedDocument && availability[selectedDocument.documentId] === 'unavailable' && <div className="mt-1 text-micro text-gm-warning">来源文档不可用</div>}
+                <h2 ref={detailHeadingRef} tabIndex={-1} className="truncate text-body font-bold outline-none">{view === 'focus' ? '阅读成果' : (selectedDocument?.fileName ?? '独立成果')}</h2>
+                {view === 'focus' && focusError && <div className="mt-1 text-micro text-gm-warning">{focusError}</div>}
+                {view !== 'focus' && selectedDocument && availability[selectedDocument.documentId] === 'unavailable' && <div className="mt-1 text-micro text-gm-warning">来源文档不可用</div>}
               </div>
             </motion.div>
           )}
@@ -504,6 +545,8 @@ export function ReadingArtifactCenter({
             <RecentView items={recentItems} renderCard={renderCard} />
           ) : view === 'documents' ? (
             <DocumentView summaries={documentSummaries} availability={availability} onOpen={openDocument} />
+          ) : view === 'focus' ? (
+            items.length > 0 ? <div className="space-y-2">{items.map((item) => renderCard(item))}</div> : <EmptyState text={focusError || '该阅读成果不存在'} />
           ) : (
             <motion.div
               initial={reducedMotion ? false : { opacity: 0, transform: 'translateX(6px)' }}

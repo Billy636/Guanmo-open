@@ -26,6 +26,9 @@ import {
   READING_REMINDER_DEVELOPMENT_MESSAGE,
   READING_REMINDER_FEATURE_AVAILABLE,
 } from '@/services/readingReminderFeature'
+import { loadReadingArtifactItemsPageCommand, loadReadingArtifactItemByKeyCommand } from './artifactCommands'
+import { toReadingArtifactMessageReference } from './readingArtifactReferences'
+import type { ReadingArtifactItemType } from '@/services/readingArtifactCenter'
 
 function validateString(value: unknown, name: string): string | null {
   if (!value || typeof value !== 'string') {
@@ -37,6 +40,21 @@ function validateString(value: unknown, name: string): string | null {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, Math.round(value)))
+}
+
+const READING_ARTIFACT_TYPES: readonly ReadingArtifactItemType[] = [
+  'highlight', 'annotation', 'summary', 'question_set', 'reading_note', 'ai_explanation',
+]
+
+function parseArtifactTypes(value: unknown): ReadingArtifactItemType[] {
+  if (typeof value !== 'string' || !value.trim()) return [...READING_ARTIFACT_TYPES]
+  return value.split(',').map((entry) => entry.trim()).filter((entry): entry is ReadingArtifactItemType =>
+    READING_ARTIFACT_TYPES.includes(entry as ReadingArtifactItemType),
+  )
+}
+
+function artifactWorkspaceRoots() {
+  return useAppStore.getState().workspaceRoots || []
 }
 
 function isInsideFolder(filePath: string, folderPath: string): boolean {
@@ -306,6 +324,73 @@ export function registerBuiltinTools() {
         } as const)[progress]),
       })
       return formatKnowledgeSearchResultsStructured(results)
+    },
+  })
+
+  registerTool({
+    name: 'search_reading_artifacts',
+    description: '只读检索已保存的阅读成果，包括人工高亮、批注和 AI 成果。支持关键词、成果类型、来源文档和数量筛选；不读取来源文档全文、不修改任何数据。无关键词时按最近更新时间返回。',
+    parameters: [
+      { name: 'query', type: 'string', description: '关键词，可搜索成果标题、正文、摘录和来源文件名', required: false },
+      { name: 'types', type: 'string', description: '成果类型，逗号分隔：highlight、annotation、summary、question_set、reading_note、ai_explanation', required: false },
+      { name: 'documentPath', type: 'string', description: '来源文档路径或文件名', required: false },
+      { name: 'limit', type: 'number', description: '返回数量（1-10），默认 5', required: false },
+    ],
+    effect: 'read',
+    capability: 'artifact_read',
+    confirmationPolicy: 'never',
+    execute: async (args) => {
+      const query = typeof args.query === 'string' ? args.query.trim() : ''
+      const types = parseArtifactTypes(args.types)
+      if (!types.length) return JSON.stringify({ kind: 'reading_artifact_search', results: [], total: 0, hasMore: false })
+      const limit = clampNumber(args.limit, 1, 10, 5)
+      const documentPath = typeof args.documentPath === 'string' ? args.documentPath.trim() : ''
+      const page = await loadReadingArtifactItemsPageCommand({
+        view: 'recent',
+        query,
+        types,
+        documentPath: documentPath || undefined,
+        documentFileName: documentPath || undefined,
+        sort: 'time',
+        limit,
+        offset: 0,
+      }, artifactWorkspaceRoots())
+      return JSON.stringify({
+        kind: 'reading_artifact_search',
+        query,
+        results: page.items.slice(0, 10).map((item) => toReadingArtifactMessageReference(item)),
+        total: page.total,
+        hasMore: page.hasMore,
+      })
+    },
+  })
+
+  registerTool({
+    name: 'get_reading_artifact',
+    description: '只读获取单条阅读成果的完整保存内容。使用稳定键 mark:<id> 或 ai:<id>；正文最多返回 12000 个字符，并标明是否截断。不读取来源文档全文。',
+    parameters: [
+      { name: 'key', type: 'string', description: '成果稳定键：mark:<id> 或 ai:<id>', required: true },
+    ],
+    effect: 'read',
+    capability: 'artifact_read',
+    confirmationPolicy: 'never',
+    execute: async (args) => {
+      const err = validateString(args.key, 'key')
+      if (err) return err
+      const key = (args.key as string).trim()
+      const loaded = await loadReadingArtifactItemByKeyCommand(key, artifactWorkspaceRoots())
+      if (!loaded) return JSON.stringify({ kind: 'reading_artifact_detail', key, result: null, notFound: true })
+      const reference = toReadingArtifactMessageReference(loaded.item, 12000)
+      const fullContent = loaded.item.content || loaded.item.quote || loaded.item.question || ''
+      const truncated = fullContent.length > 12000
+      const boundedContent = truncated ? `${fullContent.slice(0, 11999)}…` : fullContent
+      return JSON.stringify({
+        kind: 'reading_artifact_detail',
+        key,
+        result: { ...reference, preview: boundedContent },
+        content: boundedContent,
+        truncated,
+      })
     },
   })
 

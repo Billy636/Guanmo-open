@@ -49,6 +49,10 @@ function getAgentProgressText(step: AgentStep): string {
   switch (step.toolName) {
     case 'search_knowledge':
       return '正在检索本地知识库索引...'
+    case 'search_reading_artifacts':
+      return '正在检索阅读成果...'
+    case 'get_reading_artifact':
+      return '正在读取阅读成果详情...'
     case 'search_memory':
       return '正在读取长期记忆库...'
     case 'list_database_contents':
@@ -83,6 +87,8 @@ function getAgentProgressText(step: AgentStep): string {
 function getAgentToolLabel(toolName: string): string {
   return {
     search_knowledge: '本地知识库检索',
+    search_reading_artifacts: '阅读成果检索',
+    get_reading_artifact: '阅读成果详情读取',
     search_memory: '长期记忆读取',
     list_database_contents: '知识库索引概览读取',
     list_memories: '记忆库概览读取',
@@ -118,6 +124,7 @@ export function useAiChat() {
   const updateMessageContent = useChatStore((s) => s.updateMessageContent)
   const updateMessageContextMeta = useChatStore((s) => s.updateMessageContextMeta)
   const updateMessageSources = useChatStore((s) => s.updateMessageSources)
+  const updateMessageArtifactReferences = useChatStore((s) => s.updateMessageArtifactReferences)
   const updateMessageReferencedSourceIds = useChatStore((s) => s.updateMessageReferencedSourceIds)
   const removeMessageById = useChatStore((s) => s.removeMessageById)
   const setRagStatus = useChatStore((s) => s.setRagStatus)
@@ -491,6 +498,9 @@ export function useAiChat() {
               updateMessageSources(assistantMessageId, presentation.sources)
             }
             updateMessageReferencedSourceIds(assistantMessageId, presentation.referencedSourceIds)
+            if (result.artifactReferences?.length) {
+              updateMessageArtifactReferences(assistantMessageId, result.artifactReferences)
+            }
           }
 
           if (result.finalMessages) {

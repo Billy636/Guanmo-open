@@ -15,6 +15,7 @@ import { classifyMemoryRetrievalIntent } from '@/services/memory/memoryService'
 export type Capability =
   | 'memory'
   | 'knowledge'
+  | 'artifact_read'
   | 'selection_context'
   | 'file_read'
   | 'file_write'
@@ -55,6 +56,10 @@ const KEYWORD_CONFIG: Record<Capability, { weak: string[]; strong: string[] }> =
   knowledge: {
     weak: ['知识', '文档', '笔记', '资料', '索引', 'rag', '文件内容', '文章', '这篇', '提到', '总结', '解释', '分析', '概述', '归纳'],
     strong: ['知识库', '本地知识', '本地文档', '文档库', '资料库', '笔记库', 'search_knowledge', '查找文档', '搜索文档'],
+  },
+  artifact_read: {
+    weak: ['回顾成果', '以前的成果', '最近成果', '阅读成果', '高亮', '批注', '摘要', '问题集'],
+    strong: ['搜索阅读成果', '查找阅读成果', '查看阅读成果', '阅读成果库', 'search_reading_artifacts', 'get_reading_artifact'],
   },
   selection_context: {
     weak: [],
@@ -101,6 +106,10 @@ const REGEX_PATTERNS: Record<Capability, RegExp[]> = {
     /(什么|说|讲|内容).*(这个文件|这篇)/i,
     /(?:[\w\u4e00-\u9fff ._-]+\.(?:md|markdown|mdx|txt)).*(?:总结|解释|分析|概述|归纳|说了什么|讲了什么|提到|内容)/i,
     /(?:总结|解释|分析|概述|归纳|看看|查询|检索).*(?:[\w\u4e00-\u9fff ._-]+\.(?:md|markdown|mdx|txt))/i,
+  ],
+  artifact_read: [
+    /(搜索|查找|查看|回顾|读取|整理|比较|总结).*(阅读成果|高亮|批注|摘要|问题集|阅读笔记|AI解读)/i,
+    /(阅读成果|高亮|批注|摘要|问题集).*(有哪些|以前|最近|相关|对比|比较|搜索|查找|查看|回顾)/i,
   ],
   selection_context: [],
   file_read: [
@@ -244,6 +253,19 @@ function scoreCapability(
     signals.push('classifier:reminder_creation')
   }
 
+  if (capability === 'artifact_read' && /(保存|存为|添加|生成).*(阅读成果|摘要|问题集|批注)/i.test(query)) {
+    score = 0
+    signals.push('action:save_not_artifact_read')
+  }
+  if (capability === 'artifact_read' && /(搜索|查找|查看|回顾|读取|整理|比较|总结).*(阅读成果|成果库)/i.test(query)) {
+    score = Math.max(score, 4)
+    signals.push('classifier:artifact_read')
+  }
+  if (capability === 'artifact_read' && /(阅读成果|高亮|批注|摘要|问题集).*(有哪些|有什么|最近|以前|相关)/i.test(query)) {
+    score = Math.max(score, 4)
+    signals.push('classifier:artifact_inventory')
+  }
+
   if (capability === 'knowledge' && isLocalResearchIntent(query)) {
     score += 4
     signals.push('classifier:local_research')
@@ -347,7 +369,7 @@ export function detectIntentScores(
   query: string,
   context: AppContext = {}
 ): IntentDetectionResult {
-  const capabilities: Capability[] = ['memory', 'knowledge', 'selection_context', 'file_read', 'file_write', 'action', 'web', 'time']
+  const capabilities: Capability[] = ['memory', 'knowledge', 'artifact_read', 'selection_context', 'file_read', 'file_write', 'action', 'web', 'time']
 
   const scores = capabilities.map(cap => scoreCapability(cap, query, context))
 
