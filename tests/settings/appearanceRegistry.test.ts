@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   appearanceRegistry,
   createAppearanceRegistry,
+  createCustomThemeDefinition,
+  isCustomThemeImport,
   isThemeDefinition,
 } from '@/services/appearance/appearanceRegistry'
 import {
@@ -20,7 +22,7 @@ describe('Appearance Schema 与 Registry', () => {
       'github-light',
     ])
     expect(DEFAULT_APPEARANCE_CONFIG_V1).toMatchObject({
-      version: 1,
+      version: 2,
       themeId: 'warm',
       assistantVisualId: 'sprite',
       motionPreference: 'system',
@@ -28,7 +30,7 @@ describe('Appearance Schema 与 Registry', () => {
   })
 
   it('迁移旧主题字段并回退未知的新外观字段', () => {
-    expect(resolveAppearanceConfig({ theme: 'dark' })).toMatchObject({ version: 1, themeId: 'dark' })
+    expect(resolveAppearanceConfig({ theme: 'dark' })).toMatchObject({ version: 2, themeId: 'dark' })
     expect(resolveAppearanceConfig({
       version: 99,
       themeId: 'removed-theme',
@@ -64,5 +66,27 @@ describe('Appearance Schema 与 Registry', () => {
     expect(document.documentElement.dataset.themeId).toBe('dark')
     expect(document.documentElement.style.colorScheme).toBe('dark')
     expect(document.documentElement.style.getPropertyValue('--gmss-canvas')).toBe('#15130f')
+  })
+
+  it('校验 AI 主题 JSON 并生成内部主题 ID', () => {
+    const input = {
+      version: 1,
+      name: '海盐蓝',
+      description: '清爽的蓝色阅读主题',
+      colorScheme: 'light',
+      colors: {
+        canvas: '#F5F8FC', surface: '#FFFFFF', elevated: '#EEF4FA', text: '#1F2937', mutedText: '#64748B',
+        border: '#CBD5E1', primary: '#2563EB', onPrimary: '#FFFFFF', accent: '#0F766E', editorBackground: '#FFFFFF',
+        heading: '#172554', link: '#1D4ED8', codeBackground: '#EFF6FF', codeText: '#1E3A8A', selection: '#93C5FD',
+        success: '#16A34A', warning: '#D97706', error: '#DC2626',
+      },
+    } as const
+    expect(isCustomThemeImport(input)).toBe(true)
+    expect(createCustomThemeDefinition(input, 'custom-salt-blue')).toMatchObject({
+      id: 'custom-salt-blue',
+      label: '海盐蓝',
+      startupCanvas: '#F5F8FC',
+    })
+    expect(isCustomThemeImport({ ...input, colors: { ...input.colors, primary: 'url(x)' } })).toBe(false)
   })
 })

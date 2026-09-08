@@ -6,6 +6,50 @@
 /* Toast animations */
 @import './toast.css';
 
+/* Custom themes reuse the existing semantic token bridge. The selector is
+   intentionally more specific than the built-in light/dark animal tokens. */
+:root[data-theme-kind='custom'] {
+  --animal-primary-color: var(--gm-primary);
+  --animal-primary-color-hover: var(--gm-primary-hover);
+  --animal-primary-color-active: var(--gm-primary-active);
+  --animal-primary-color-bg: var(--gm-primary-subtle);
+  --animal-success-color: var(--gm-success);
+  --animal-warning-color: var(--gm-warning);
+  --animal-error-color: var(--gm-error);
+  --animal-text-color: var(--gm-text);
+  --animal-text-color-secondary: var(--gm-text-secondary);
+  --animal-text-color-muted: var(--gm-text-tertiary);
+  --animal-text-color-disabled: var(--gm-text-disabled);
+  --animal-border-color: var(--gm-border);
+  --animal-border-color-hover: var(--gm-border-hover);
+  --animal-border-color-light: var(--gm-border-subtle);
+  --animal-bg-color: var(--gm-surface);
+  --animal-bg-color-secondary: var(--gm-surface-elevated);
+  --animal-bg-color-disabled: var(--gm-surface-overlay);
+  --animal-tabs-bg: var(--gm-surface);
+  --animal-tabs-border: var(--gm-border);
+  --animal-tabs-list-bg: var(--gm-surface-elevated);
+  --animal-tabs-item-text: var(--gm-text-secondary);
+  --animal-tabs-item-hover-bg: var(--gm-surface-hover);
+  --animal-tabs-active-bg: var(--gm-primary);
+  --animal-tabs-active-text: var(--gm-text-on-primary);
+  --animal-select-trigger-bg: var(--gm-surface);
+  --animal-select-trigger-border: var(--gm-border);
+  --animal-select-trigger-hover-bg: var(--gm-surface-elevated);
+  --animal-select-dropdown-bg: var(--gm-surface);
+  --animal-select-pill-bg: var(--gm-primary-subtle);
+  --animal-switch-bg: var(--gm-border);
+  --animal-switch-border: var(--gm-border-strong);
+  --animal-switch-handle-bg: var(--gm-surface);
+  --animal-button-primary-text: var(--gm-text-on-primary);
+  --animal-button-primary-bg: var(--gm-primary);
+  --animal-button-primary-border: var(--gm-primary);
+  --animal-table-bg: var(--gm-surface);
+  --animal-table-divider: var(--gm-border-subtle);
+  --animal-table-text: var(--gm-text);
+  --animal-table-text-muted: var(--gm-text-secondary);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

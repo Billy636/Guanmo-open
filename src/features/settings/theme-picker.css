@@ -3,6 +3,24 @@
   gap: 10px;
 }
 
+.gm-theme-manager {
+  display: grid;
+  gap: 10px;
+}
+
+.gm-theme-manager__toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .gm-theme-manager__toolbar {
+    flex-direction: column;
+  }
+}
+
 .gm-theme-picker {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -10,6 +28,7 @@
 }
 
 .gm-theme-card {
+  position: relative;
   min-width: 0;
   padding: 6px;
   border: 1px solid var(--gm-border);
@@ -18,6 +37,7 @@
   color: var(--gm-text-secondary);
   text-align: left;
   transition: border-color 120ms var(--gm-ease), background-color 120ms var(--gm-ease), box-shadow 120ms var(--gm-ease);
+  cursor: pointer;
 }
 
 .gm-theme-card:hover {
@@ -33,6 +53,80 @@
 .gm-theme-card:focus-visible {
   outline: 2px solid var(--gm-border-focus);
   outline-offset: 2px;
+}
+
+.gm-theme-card--empty {
+  display: grid;
+  grid-template-rows: 54px auto auto;
+  align-content: start;
+  border-style: dashed;
+  text-align: center;
+}
+
+.gm-theme-card__empty-icon {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border: 1px solid var(--gm-border);
+  border-radius: 999px;
+  color: var(--gm-primary);
+  font-size: 0;
+  justify-self: center;
+  align-self: center;
+}
+
+.gm-theme-card__empty-icon::before,
+.gm-theme-card__empty-icon::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  content: '';
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.gm-theme-card__empty-icon::before {
+  width: 12px;
+  height: 1px;
+}
+
+.gm-theme-card__empty-icon::after {
+  width: 1px;
+  height: 12px;
+}
+
+.gm-theme-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.gm-theme-card__lock {
+  flex: 0 0 auto;
+  color: var(--gm-text-tertiary);
+  font-size: 9px;
+}
+
+.gm-theme-card__remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--gm-error) 10%, transparent);
+  color: var(--gm-error);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.gm-theme-card__remove:hover {
+  background: color-mix(in srgb, var(--gm-error) 18%, transparent);
 }
 
 .gm-theme-card__preview {

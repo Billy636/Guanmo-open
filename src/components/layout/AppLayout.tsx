@@ -14,6 +14,7 @@ import { FullscreenFileDrawer } from './FullscreenFileDrawer'
 import { CommandPalette } from '../common/CommandPalette'
 import { toast } from '@/services/toast'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { resolveThemeDefinition } from '@/services/appearance/appearanceDom'
 import { useFullscreen } from '@/hooks/useFullscreen'
 import { OPEN_SETTINGS_SECTION_EVENT } from '@/services/settingsNavigation'
 import {
@@ -329,7 +330,11 @@ export function AppLayout() {
 
   const toggleTheme = useCallback(() => {
     const { appearance, updateAppearanceSettings } = useSettingsStore.getState()
-    updateAppearanceSettings({ themeId: appearance.themeId === 'dark' ? appearance.lastLightThemeId : 'dark' })
+    updateAppearanceSettings({
+      themeId: resolveThemeDefinition(appearance.themeId).colorScheme === 'dark'
+        ? appearance.lastLightThemeId
+        : 'dark',
+    })
   }, [])
 
   const runAfterNormalLayout = useCallback(async (action: () => void | Promise<void>) => {

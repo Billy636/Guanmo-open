@@ -26,7 +26,7 @@ describe('设置兼容', () => {
 
     expect(state.editor).toMatchObject({ fontSize: 14, lineHeight: 1.65, autoSave: true, modePerformancePolicy: 'balanced', inlinePreviewEdit: true, autoSendAiShortcut: true, defaultOpenMode: 'preview' })
     expect(state.appearance).toMatchObject({
-      version: 1,
+      version: 2,
       themeId: 'warm',
       lastLightThemeId: 'warm',
       assistantVisualId: 'sprite',
@@ -100,7 +100,7 @@ describe('设置兼容', () => {
     expect(fallbackStore.getState().appearance).toMatchObject({ themeId: 'warm', lastLightThemeId: 'warm' })
   })
 
-  it('非法外观扩展字段回退为版本 1 默认值', async () => {
+  it('非法外观扩展字段回退为版本 2 默认值', async () => {
     const store = await loadSettingsStore({
       appearance: {
         version: 99,
@@ -110,7 +110,7 @@ describe('设置兼容', () => {
       },
     })
     expect(store.getState().appearance).toMatchObject({
-      version: 1,
+      version: 2,
       themeId: 'warm',
       assistantVisualId: 'sprite',
       motionPreference: 'system',
@@ -130,6 +130,39 @@ describe('设置兼容', () => {
     expect(store.getState().appearance.lastLightThemeId).toBe('github-light')
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(document.documentElement.style.colorScheme).toBe('dark')
+  })
+
+  it('管理自定义主题槽位并在删除后安全回退', async () => {
+    const store = await loadSettingsStore()
+    expect(store.getState().removeTheme('warm')).toBe(false)
+    expect(store.getState().removeTheme('paper')).toBe(true)
+
+    const added = store.getState().addCustomTheme({
+      id: 'custom-sea',
+      label: '海盐蓝',
+      description: '清爽蓝色',
+      colorScheme: 'light',
+      startupCanvas: '#F5F8FC',
+      palette: {
+        canvas: '#F5F8FC', surface: '#FFFFFF', elevated: '#EEF4FA', text: '#1F2937', mutedText: '#64748B',
+        border: '#CBD5E1', primary: '#2563EB', onPrimary: '#FFFFFF', accent: '#0F766E', editorBackground: '#FFFFFF',
+        heading: '#172554', link: '#1D4ED8', codeBackground: '#EFF6FF', codeText: '#1E3A8A', selection: '#93C5FD',
+        success: '#16A34A', warning: '#D97706', error: '#DC2626',
+      },
+    })
+    expect(added).toBe(true)
+    expect(store.getState().appearance.themeId).toBe('custom-sea')
+    expect(document.documentElement.dataset.themeKind).toBe('custom')
+    expect(document.documentElement.style.getPropertyValue('--gm-primary')).toBe('#2563EB')
+
+    expect(store.getState().removeTheme('custom-sea')).toBe(true)
+    expect(store.getState().appearance.themeId).toBe('warm')
+    expect(store.getState().appearance.themeSlots[0]).toBeNull()
+    store.getState().restoreDefaultThemes()
+    expect(store.getState().appearance.themeSlots).toEqual([
+      { kind: 'builtin', themeId: 'paper' },
+      { kind: 'builtin', themeId: 'github-light' },
+    ])
   })
 
   it('旧模型和搜索配置缺少超时时补默认值，越界值会被限制', async () => {

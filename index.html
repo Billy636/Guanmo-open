@@ -17,12 +17,27 @@
         }
         let themeId = 'warm'
         let hasPersistedTheme = false
+        let persistedBootstrap = null
         try {
           const persisted = JSON.parse(localStorage.getItem('guanmo-settings') || 'null')
           const appearance = persisted && persisted.state && persisted.state.appearance
           if (appearance && appearance.themeId && Object.prototype.hasOwnProperty.call(themeBootstrap, appearance.themeId)) {
             themeId = appearance.themeId
             hasPersistedTheme = true
+            persistedBootstrap = themeBootstrap[themeId]
+          } else if (appearance && typeof appearance.themeId === 'string' && Array.isArray(appearance.themeSlots)) {
+            const customSlot = appearance.themeSlots.find((slot) => slot && slot.kind === 'custom' && slot.theme && slot.theme.id === appearance.themeId)
+            if (customSlot && customSlot.theme.colorScheme && customSlot.theme.startupCanvas && customSlot.theme.palette && customSlot.theme.palette.text) {
+              themeId = customSlot.theme.id
+              persistedBootstrap = {
+                colorScheme: customSlot.theme.colorScheme,
+                startupCanvas: customSlot.theme.startupCanvas,
+                text: customSlot.theme.palette.text,
+                surface: customSlot.theme.palette.surface,
+                border: customSlot.theme.palette.border,
+              }
+              hasPersistedTheme = true
+            }
           } else if (appearance && appearance.theme === 'dark') {
             themeId = 'dark'
             hasPersistedTheme = true
@@ -42,11 +57,15 @@
           }
         }
         const root = document.documentElement
-        const bootstrap = themeBootstrap[themeId]
+        const bootstrap = persistedBootstrap || themeBootstrap[themeId]
         root.dataset.themeId = themeId
         root.dataset.theme = bootstrap.colorScheme
+        root.dataset.themeKind = persistedBootstrap ? 'custom' : 'builtin'
         root.style.colorScheme = bootstrap.colorScheme
         root.style.setProperty('--gmss-canvas', bootstrap.startupCanvas)
+        if (bootstrap.text) root.style.setProperty('--gmss-text', bootstrap.text)
+        if (bootstrap.surface) root.style.setProperty('--gmss-surface', bootstrap.surface)
+        if (bootstrap.border) root.style.setProperty('--gmss-border', bootstrap.border)
       })()
     </script>
     <!-- Startup Shell 样式不能内联：Tauri 会给内联 <style> 注入 CSP nonce，

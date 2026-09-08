@@ -73,4 +73,27 @@ describe('冷启动主题', () => {
     expect(resolveStartupTheme(undefined, 'dark').themeId).toBe('dark')
   })
 
+  it('在启动阶段恢复自定义主题的底色与配色模式', () => {
+    const result = resolveStartupTheme({
+      state: {
+        appearance: {
+          themeId: 'custom-sea',
+          themeSlots: [
+            {
+              kind: 'custom',
+              theme: {
+                id: 'custom-sea',
+                colorScheme: 'dark',
+                startupCanvas: '#102030',
+                palette: { text: '#F8FAFC', surface: '#182A3A', border: '#34506A' },
+              },
+            },
+            null,
+          ],
+        },
+      },
+    })
+    expect(result).toMatchObject({ themeId: 'custom-sea', theme: 'dark', colorScheme: 'dark', startupCanvas: '#102030' })
+  })
+
 })
