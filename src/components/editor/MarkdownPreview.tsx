@@ -134,6 +134,7 @@ function normalizeMeasuredBlockHeight(height: number): number {
 let activePreviewRoot: HTMLElement | null = null
 const DRAG_AUTOSCROLL_EDGE = 48
 const DRAG_AUTOSCROLL_MAX_STEP = 14
+const DRAG_ENDPOINT_SAME_LINE_TOLERANCE = 12
 
 interface PreviewDragSelection {
   anchorOffset: number
@@ -141,6 +142,8 @@ interface PreviewDragSelection {
   rafId: number
   clientX: number
   clientY: number
+  lastResolvedClientX: number
+  lastResolvedClientY: number
 }
 
 interface FloatingAnchorRect {
@@ -520,6 +523,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   const sourceRevealRangeRef = useRef<{ from: number; to: number } | null>(null)
   const selectionAnchorRef = useRef<number | null>(null)
   const dragStateRef = useRef<PreviewDragSelection | null>(null)
+  const nativeSelectionRecoveryRafRef = useRef<number | null>(null)
   /** 受支持交互 HTML（details 展开/折叠）的瞬时状态：块 ID + 块内序号 → 用户态；仅存本组件实例 ref，不写 Tab、不持久化 */
   const interactiveHtmlStateRef = useRef<Map<string, boolean>>(new Map())
   const interactiveStateKeyRef = useRef<string | null>(null)
@@ -545,6 +549,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   )
   const pendingSelectionRef = useRef<PendingSelectionUi | null>(null)
   pendingSelectionRef.current = pendingSelectionUi
+  const transientSelectionIdentityRef = useRef({ documentKey, displayedContent, resource })
   const focusedMarkIdRef = useRef<string | null>(null)
 
   const measurementKey = measurementKeyRef.current
@@ -818,6 +823,28 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
     setPendingSelectionUi(null)
     annotationOverlayRef?.current?.hide()
   }, [annotationOverlayRef, cancelReadingMarkClose])
+
+  const clearNativePreviewSelection = useCallback((root: HTMLElement | null) => {
+    if (!root) return
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const anchorNode = selection.anchorNode
+    const focusNode = selection.focusNode
+    if ((anchorNode && root.contains(anchorNode)) || (focusNode && root.contains(focusNode))) {
+      selection.removeAllRanges()
+    }
+  }, [])
+
+  const clearTransientReadingMarkSelection = useCallback(() => {
+    dismissReadingMarkUi()
+    selectionAnchorRef.current = null
+    applySelection(null)
+    clearNativePreviewSelection(rootRef.current)
+    if (nativeSelectionRecoveryRafRef.current !== null) {
+      cancelAnimationFrame(nativeSelectionRecoveryRafRef.current)
+      nativeSelectionRecoveryRafRef.current = null
+    }
+  }, [applySelection, clearNativePreviewSelection, dismissReadingMarkUi])
 
   const closeReadingMarkUiAfterSave = useCallback(() => {
     cancelReadingMarkClose()
@@ -1994,9 +2021,13 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
     }
     // 每帧最多更新一次终点，且只有 offset 真正变化时才写入选区
     const offset = resolveCaretOffsetRef.current(drag.clientX, drag.clientY)
-    if (offset !== null && offset !== drag.focusOffset) {
-      drag.focusOffset = offset
-      applySelection({ from: drag.anchorOffset, to: offset })
+    if (offset !== null) {
+      drag.lastResolvedClientX = drag.clientX
+      drag.lastResolvedClientY = drag.clientY
+      if (offset !== drag.focusOffset) {
+        drag.focusOffset = offset
+        applySelection({ from: drag.anchorOffset, to: offset })
+      }
     }
     drag.rafId = requestAnimationFrame(runDragFrameRef.current)
   }
@@ -2023,6 +2054,8 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
         rafId: requestAnimationFrame(runDragFrameRef.current),
         clientX: event.clientX,
         clientY: event.clientY,
+        lastResolvedClientX: event.clientX,
+        lastResolvedClientY: event.clientY,
       }
       applySelection(anchor === offset ? null : { from: anchor, to: offset })
     }
@@ -2046,31 +2079,87 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       drag.clientY = event.clientY
     }
 
+    const resolveReleaseOffset = (drag: PreviewDragSelection, event: MouseEvent) => {
+      const exact = resolveCaretOffsetRef.current(event.clientX, event.clientY)
+      if (exact !== null) return exact
+      if (Math.abs(event.clientY - drag.lastResolvedClientY) > DRAG_ENDPOINT_SAME_LINE_TOLERANCE) return drag.focusOffset
+      if (event.clientX === drag.lastResolvedClientX) return drag.focusOffset
+
+      let resolvedX = drag.lastResolvedClientX
+      let unresolvedX = event.clientX
+      let resolvedOffset = drag.focusOffset
+      for (let i = 0; i < 8; i += 1) {
+        const midpoint = (resolvedX + unresolvedX) / 2
+        const midpointOffset = resolveCaretOffsetRef.current(midpoint, event.clientY)
+        if (midpointOffset === null) {
+          unresolvedX = midpoint
+        } else {
+          resolvedX = midpoint
+          resolvedOffset = midpointOffset
+        }
+      }
+      return resolvedOffset
+    }
+
+    const resolveNativePreviewSelection = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return null
+      const range = selection.getRangeAt(0)
+      if (range.collapsed) return null
+      const anchorNode = selection.anchorNode
+      const focusNode = selection.focusNode
+      if (!anchorNode || !focusNode || !root.contains(anchorNode) || !root.contains(focusNode)) return null
+      const anchor = domPointToSourceOffset(anchorNode, selection.anchorOffset)
+      const focus = domPointToSourceOffset(focusNode, selection.focusOffset)
+      if (anchor === null || focus === null || anchor === focus) return null
+      return { anchor, focus }
+    }
+
+    const completeSelection = (anchor: number, focus: number, event: MouseEvent) => {
+      selectionAnchorRef.current = anchor
+      const normalized = anchor === focus ? null : (anchor <= focus ? { from: anchor, to: focus } : { from: focus, to: anchor })
+      applySelection(normalized)
+      if (!normalized) {
+        clearTransientReadingMarkSelection()
+        return
+      }
+      const selection = getSelectionSnapshot()
+      if (!selection || !selection.text) {
+        clearTransientReadingMarkSelection()
+        return
+      }
+      const fallback = { top: event.clientY, right: event.clientX, bottom: event.clientY, left: event.clientX, triggerPoint: { x: event.clientX, y: event.clientY } }
+      const anchorRect = getSourceRangeAnchorRect(root, selection.from, selection.to, fallback)
+      const conflict = findReadingMarkConflict(readingMarkIndexRef.current, selection.from, selection.to) ?? undefined
+      const next = { selection, anchorRect, expanded: false, mode: 'colors' as const, color: 'yellow' as const, textDraft: '', creatingText: false, savingText: false, conflict }
+      pendingSelectionRef.current = next
+      setPendingSelectionUi(next)
+    }
+
     const handleMouseUp = (event: MouseEvent) => {
       const drag = dragStateRef.current
-      if (!drag) return
+      if (!drag) {
+        if (event.button !== 0) return
+        const recover = () => {
+          nativeSelectionRecoveryRafRef.current = null
+          if (activePreviewRoot !== root || dragStateRef.current) return
+          const native = resolveNativePreviewSelection()
+          if (!native) return
+          completeSelection(native.anchor, native.focus, event)
+          clearNativePreviewSelection(root)
+        }
+        if (!resolveNativePreviewSelection()) {
+          nativeSelectionRecoveryRafRef.current = requestAnimationFrame(recover)
+          return
+        }
+        recover()
+        return
+      }
       if (event.button !== 0 && (event.buttons & 1) !== 0) return
       dragStateRef.current = null
       if (drag.rafId !== 0) cancelAnimationFrame(drag.rafId)
-      const offset = resolveCaretOffsetRef.current(event.clientX, event.clientY)
-      const focus = offset ?? drag.focusOffset
-      selectionAnchorRef.current = drag.anchorOffset
-      const normalized = drag.anchorOffset === focus ? null : (drag.anchorOffset <= focus ? { from: drag.anchorOffset, to: focus } : { from: focus, to: drag.anchorOffset })
-      applySelection(normalized)
-      if (normalized) {
-        const selection = getSelectionSnapshot()
-        if (selection && selection.text) {
-          const fallback = { top: event.clientY, right: event.clientX, bottom: event.clientY, left: event.clientX, triggerPoint: { x: event.clientX, y: event.clientY } }
-          const anchorRect = getSourceRangeAnchorRect(root, selection.from, selection.to, fallback)
-          const conflict = findReadingMarkConflict(readingMarkIndexRef.current, selection.from, selection.to) ?? undefined
-          const next = { selection, anchorRect, expanded: false, mode: 'colors' as const, color: 'yellow' as const, textDraft: '', creatingText: false, savingText: false, conflict }
-          pendingSelectionRef.current = next
-          setPendingSelectionUi(next)
-        }
-      } else {
-        pendingSelectionRef.current = null
-        setPendingSelectionUi(null)
-      }
+      const focus = resolveReleaseOffset(drag, event)
+      completeSelection(drag.anchorOffset, focus, event)
     }
 
     const handleDoubleClick = (event: MouseEvent) => {
@@ -2106,8 +2195,10 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       const drag = dragStateRef.current
       if (drag && drag.rafId !== 0) cancelAnimationFrame(drag.rafId)
       dragStateRef.current = null
+      if (nativeSelectionRecoveryRafRef.current !== null) cancelAnimationFrame(nativeSelectionRecoveryRafRef.current)
+      nativeSelectionRecoveryRafRef.current = null
     }
-  }, [annotationOverlayRef, applySelection, getSelectionSnapshot])
+  }, [annotationOverlayRef, applySelection, clearNativePreviewSelection, clearTransientReadingMarkSelection, getSelectionSnapshot])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2145,12 +2236,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       if (event.button !== 0) return
       const target = event.target
       if (target instanceof Element && target.closest('.gm-reading-mark-toolbar, .gm-reading-mark-popover, [data-annotation-hover-overlay="true"]')) return
-      const hadPendingSelection = pendingSelectionRef.current !== null
-      dismissReadingMarkUi()
-      if (hadPendingSelection) {
-        selectionAnchorRef.current = null
-        applySelection(null)
-      }
+      clearTransientReadingMarkSelection()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -2168,21 +2254,26 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       document.removeEventListener('mousedown', closeOnOutside, true)
       document.removeEventListener('keydown', closeOnEscape, true)
     }
-  }, [applySelection, dismissReadingMarkUi, returnToColorMode])
+  }, [clearTransientReadingMarkSelection, dismissReadingMarkUi, returnToColorMode])
 
   useEffect(() => () => cancelReadingMarkClose(), [cancelReadingMarkClose])
 
   useEffect(() => {
-    dismissReadingMarkUi()
-  }, [dismissReadingMarkUi, documentKey, displayedContent, resource])
+    const previous = transientSelectionIdentityRef.current
+    const changed = previous.documentKey !== documentKey
+      || previous.displayedContent !== displayedContent
+      || previous.resource !== resource
+    transientSelectionIdentityRef.current = { documentKey, displayedContent, resource }
+    if (changed) clearTransientReadingMarkSelection()
+  }, [clearTransientReadingMarkSelection, documentKey, displayedContent, resource])
 
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    const close = () => dismissReadingMarkUi()
+    const close = () => clearTransientReadingMarkSelection()
     container.addEventListener('scroll', close, { passive: true })
     return () => container.removeEventListener('scroll', close)
-  }, [dismissReadingMarkUi, scrollState.viewportHeight])
+  }, [clearTransientReadingMarkSelection, scrollState.viewportHeight])
 
   const rehypePlugins = useMemo(
     () => [

@@ -270,6 +270,28 @@ describe('MarkdownPreview 批注浮层', () => {
     expect(toolbar!.querySelector('.gm-reading-mark-toolbar-actions')?.className).not.toContain('is-expanded')
   })
 
+  it('行尾落在空白且该点无法映射时，仍以最后可映射位置完成批注选区', async () => {
+    const caretRangeFromPoint = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+    caretRangeFromPoint.caretRangeFromPoint = (x, _y) => {
+      const textNode = host?.querySelector('[data-md-block-index]')?.querySelector('p span')?.firstChild
+      if (!textNode || x > 100) return null
+      const range = document.createRange()
+      range.setStart(textNode, x < 50 ? 0 : (textNode.textContent?.length ?? 0))
+      range.setEnd(textNode, x < 50 ? 0 : (textNode.textContent?.length ?? 0))
+      return range
+    }
+    const previewRef = { current: null } as MutableRefObject<MarkdownPreviewHandle | null>
+    render(<MarkdownPreview ref={previewRef} content={content} documentKey="doc-line-end" documentVersion={1} filePath={documentPath} onCreateReadingMark={async () => ({ status: 'created' as const, mark: makeMark('created-line-end', '第一段批注目标', '新批注') })} />, { container: host! })
+    const block = host!.querySelector<HTMLElement>('[data-md-block-index]')
+    expect(block).not.toBeNull()
+
+    fireEvent.mouseDown(block!, { button: 0, clientX: 4, clientY: 110 })
+    fireEvent.mouseUp(document, { clientX: 120, clientY: 110 })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加批注' })).toBeInTheDocument())
+    expect(previewRef.current?.getSelection()?.text).toBe('第一段批注目标。第二段批注目标。')
+  })
+
   it('外部点击关闭批注入口时清除临时选区且不创建持久化标记', async () => {
     const caretRangeFromPoint = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
     caretRangeFromPoint.caretRangeFromPoint = (x) => {
@@ -298,6 +320,44 @@ describe('MarkdownPreview 批注浮层', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '添加批注' })).not.toBeInTheDocument())
     expect(previewRef.current?.getSelection()).toBeNull()
     expect(onCreateReadingMark).not.toHaveBeenCalled()
+  })
+
+  it('没有批注入口时，外部左键也清除预览内的原生选区', () => {
+    const caretRangeFromPoint = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+    caretRangeFromPoint.caretRangeFromPoint = () => null
+    render(<MarkdownPreview content={content} documentKey="doc-native-outside" documentVersion={1} filePath={documentPath} onCreateReadingMark={vi.fn()} />, { container: host! })
+    const textNode = host!.querySelector('[data-md-block-index] p span')?.firstChild
+    expect(textNode).not.toBeNull()
+    const nativeRange = document.createRange()
+    nativeRange.selectNodeContents(textNode!)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(nativeRange)
+    expect(window.getSelection()?.rangeCount).toBe(1)
+
+    fireEvent.mouseDown(document.body, { button: 0 })
+
+    expect(window.getSelection()?.rangeCount).toBe(0)
+  })
+
+  it('首字符左侧空白起拖时，回收原生选区并创建批注入口', async () => {
+    const caretRangeFromPoint = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+    caretRangeFromPoint.caretRangeFromPoint = () => null
+    const previewRef = { current: null } as MutableRefObject<MarkdownPreviewHandle | null>
+    render(<MarkdownPreview ref={previewRef} content={content} documentKey="doc-native-recovery" documentVersion={1} filePath={documentPath} onCreateReadingMark={vi.fn()} />, { container: host! })
+    const block = host!.querySelector<HTMLElement>('[data-md-block-index]')
+    const paragraph = block?.querySelector('p')
+    expect(paragraph).not.toBeNull()
+
+    fireEvent.mouseDown(block!, { button: 0, clientX: 0, clientY: 110 })
+    const nativeRange = document.createRange()
+    nativeRange.selectNodeContents(paragraph!)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(nativeRange)
+    fireEvent.mouseUp(document, { button: 0, clientX: 120, clientY: 110 })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加批注' })).toBeInTheDocument())
+    expect(previewRef.current?.getSelection()?.text).toBe('第一段批注目标。第二段批注目标。')
+    expect(window.getSelection()?.rangeCount).toBe(0)
   })
 
   it.each([
