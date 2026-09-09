@@ -167,7 +167,7 @@ export interface ChatMessage {
   displayContent?: string
   contextMeta?: ChatMessageContextMeta
   sources?: ChatMessageSource[]
-  /** 本轮正文中实际确认引用的来源 ID；缺失时兼容旧消息并按未确认来源展示，空数组表示已确认无引用。 */
+  /** 本轮正文中实际确认引用的来源 ID；缺失时兼容旧消息，空数组表示已完成解析但没有合法引用。 */
   referencedSourceIds?: SourceReferenceId[]
   artifactReferences?: ReadingArtifactMessageReference[]
   editConfirmation?: EditConfirmation

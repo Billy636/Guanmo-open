@@ -133,24 +133,39 @@ describe('source reference registry', () => {
     expect(resolveStoredSourceReferences([localSource, webSource], ['S2', 'S9', 'S2'])).toEqual({
       sources: [webSource],
       hasValidReferences: true,
+      displayMode: 'confirmed',
+    })
+    expect(resolveStoredSourceReferences([localSource, webSource], ['S1'])).toEqual({
+      sources: [localSource],
+      hasValidReferences: true,
+      displayMode: 'confirmed',
     })
     expect(resolveStoredSourceReferences([localSource, webSource], [])).toEqual({
-      sources: [],
+      sources: [webSource],
       hasValidReferences: false,
+      displayMode: 'web-results',
     })
     expect(resolveStoredSourceReferences([localSource, webSource], undefined)).toEqual({
       sources: [localSource, webSource],
       hasValidReferences: false,
+      displayMode: 'legacy-unconfirmed',
     })
     expect(resolveStoredSourceReferences([localSource, webSource], ['S9'])).toEqual({
+      sources: [webSource],
+      hasValidReferences: false,
+      displayMode: 'web-results',
+    })
+    expect(resolveStoredSourceReferences([localSource], [])).toEqual({
       sources: [],
       hasValidReferences: false,
+      displayMode: 'hidden',
     })
     expect(resolveStoredSourceReferences([
       { ...webSource, url: 'javascript:alert(1)' },
     ], undefined)).toEqual({
       sources: [],
       hasValidReferences: false,
+      displayMode: 'hidden',
     })
   })
 })

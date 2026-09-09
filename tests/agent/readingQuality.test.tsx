@@ -229,6 +229,26 @@ describe('阅读来源展示', () => {
 
     expect(screen.queryByRole('button', { name: /来源/ })).not.toBeInTheDocument()
   })
+
+  it('模型漏写引用时展示安全 Web 检索结果并标记为未确认引用', () => {
+    render(<ChatBubble
+      role="assistant"
+      content="联网回答"
+      isLast={false}
+      streaming={false}
+      sources={[{
+        kind: 'web',
+        title: '匿名网页',
+        url: 'https://example.com/anonymous',
+        siteName: 'example.com',
+      }]}
+      referencedSourceIds={[]}
+      onOpenSource={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: '联网检索结果/未确认引用 1' }))
+    expect(screen.getByRole('link', { name: /匿名网页/ })).toHaveAttribute('href', 'https://example.com/anonymous')
+  })
 })
 
 describe('保存回复交互', () => {

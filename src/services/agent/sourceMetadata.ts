@@ -7,7 +7,7 @@ import type { ContextTag } from '@/types/contextTag'
 import type { AgentResult, AgentStep } from './types'
 import { stripToolCallJson } from './toolCallParser'
 import { createContextMeta } from '@/services/aiChatMessages'
-import { parseSourceReferences, type SourceReferenceRegistry } from '@/services/ai/sourceReferences'
+import { normalizeSafeWebSourceUrl, parseSourceReferences, type SourceReferenceRegistry } from '@/services/ai/sourceReferences'
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -59,12 +59,49 @@ export function extractKnowledgeSourcesFromSteps(steps: AgentStep[]): ChatMessag
   return sources
 }
 
+export function extractWebSourcesFromSteps(steps: AgentStep[]): ChatMessageSource[] {
+  const sources: ChatMessageSource[] = []
+  const seen = new Set<string>()
+
+  for (const step of steps) {
+    if (step.type !== 'observation' || step.toolName !== 'web_search') continue
+    try {
+      const parsed = JSON.parse(step.content)
+      if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) continue
+
+      for (const item of parsed.results) {
+        if (!isPlainObject(item) || typeof item.url !== 'string') continue
+        const url = normalizeSafeWebSourceUrl(item.url)
+        if (!url || seen.has(url)) continue
+        seen.add(url)
+        sources.push({
+          kind: 'web',
+          title: typeof item.title === 'string' && item.title.trim() ? item.title : url,
+          url,
+          siteName: typeof item.siteName === 'string' ? item.siteName : undefined,
+          publishedAt: typeof item.publishedAt === 'string' ? item.publishedAt : undefined,
+          snippet: typeof item.snippet === 'string' ? item.snippet : undefined,
+        })
+      }
+    } catch {
+      // 非联网搜索 observation 不携带 Web 来源 JSON。
+    }
+  }
+
+  return sources
+}
+
 export function buildAgentResultPresentation(result: AgentResult, tagCount: number) {
+  const registrySources = result.sourceRegistry?.entries.map((entry) => entry.source) || []
+  const fallbackSources = [
+    ...extractWebSourcesFromSteps(result.steps),
+    ...extractKnowledgeSourcesFromSteps(result.steps),
+  ]
   const candidateSources = result.sources?.length
     ? result.sources
-    : result.sourceRegistry
-      ? result.sourceRegistry.entries.map((entry) => entry.source)
-      : extractKnowledgeSourcesFromSteps(result.steps)
+    : registrySources.length > 0
+      ? registrySources
+      : fallbackSources
   const resolved = resolveAgentAnswerSources(result.answer, result.sourceRegistry, candidateSources)
   const sources = candidateSources
   return {

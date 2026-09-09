@@ -24,7 +24,7 @@ import type {
   ActionProposal,
   ReadingArtifactMessageReference,
 } from '@/services/ai/types'
-import { resolveStoredSourceReferences, type SourceReferenceId } from '@/services/ai/sourceReferences'
+import { resolveStoredSourceReferences, type SourceReferenceId, type StoredSourceReferenceDisplayMode } from '@/services/ai/sourceReferences'
 import { AI_SHORTCUT_SUBMIT_EVENT } from '@/services/aiContext'
 import {
   consumePendingPanelNavigation,
@@ -1617,6 +1617,7 @@ export const ChatBubble = memo(function ChatBubble({
             <MessageSources
               sources={displayedSources.sources}
               hasValidReferences={displayedSources.hasValidReferences}
+              displayMode={displayedSources.displayMode}
               onOpenSource={onOpenSource}
             />
           )}
@@ -1753,10 +1754,12 @@ function AiAvatar({
 function MessageSources({
   sources,
   hasValidReferences,
+  displayMode,
   onOpenSource,
 }: {
   sources: ChatMessageSource[]
   hasValidReferences: boolean
+  displayMode: StoredSourceReferenceDisplayMode
   onOpenSource: (source: LocalChatMessageSource) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -1771,7 +1774,11 @@ function MessageSources({
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}>
           <path d="M9 18l6-6-6-6" />
         </svg>
-        <span>{hasValidReferences ? '引用来源' : '检索来源/未确认引用'} {sources.length}</span>
+        <span>{hasValidReferences
+          ? '引用来源'
+          : displayMode === 'web-results'
+            ? '联网检索结果/未确认引用'
+            : '检索来源/未确认引用'} {sources.length}</span>
       </button>
       {expanded && (
         <div className="mt-2 space-y-1">

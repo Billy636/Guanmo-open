@@ -9,6 +9,7 @@ import type { AgentResult } from '@/services/agent/types'
 import type { ContextTag } from '@/types/contextTag'
 import { CONTEXT_BLOCK_PREFIX } from '@/services/contextBuilder'
 import { buildSystemMessages, buildUntrustedContextMessage, type AiAnswerMode } from '@/services/ai/systemPrompts'
+import { SOURCE_REFERENCE_INSTRUCTION } from '@/services/ai/sourceReferences'
 
 export function resolveAiAnswerMode(selectionRequestKind: 'none' | 'fast' | 'context' | 'explicit_lookup', useAgentMode: boolean): AiAnswerMode | undefined {
   return selectionRequestKind === 'fast' && !useAgentMode ? 'selection_direct' : undefined
@@ -179,7 +180,10 @@ export function buildAgentFinalAnswerMessages(
     ...finalMessages,
     {
       role: 'user',
-      content: '如果工具结果不足、记忆不确定、数据不存在或证据太弱，必须明确说不确定或当前信息不足，禁止脑补。',
+      content: [
+        '如果工具结果不足、记忆不确定、数据不存在或证据太弱，必须明确说不确定或当前信息不足，禁止脑补。',
+        SOURCE_REFERENCE_INSTRUCTION,
+      ].join('\n'),
     },
   ]
 }
