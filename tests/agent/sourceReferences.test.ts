@@ -129,43 +129,24 @@ describe('source reference registry', () => {
     expect(parseSourceReferences('依据 [S1]。', registry).referencedSources).toEqual([legacyLocalSource])
   })
 
-  it('从完整候选来源恢复合法引用子集，并区分旧消息与已确认无引用', () => {
+  it('从完整候选来源恢复合法引用子集，旧消息或全无效 ID 安全降级', () => {
     expect(resolveStoredSourceReferences([localSource, webSource], ['S2', 'S9', 'S2'])).toEqual({
       sources: [webSource],
       hasValidReferences: true,
-      displayMode: 'confirmed',
-    })
-    expect(resolveStoredSourceReferences([localSource, webSource], ['S1'])).toEqual({
-      sources: [localSource],
-      hasValidReferences: true,
-      displayMode: 'confirmed',
-    })
-    expect(resolveStoredSourceReferences([localSource, webSource], [])).toEqual({
-      sources: [webSource],
-      hasValidReferences: false,
-      displayMode: 'web-results',
     })
     expect(resolveStoredSourceReferences([localSource, webSource], undefined)).toEqual({
       sources: [localSource, webSource],
       hasValidReferences: false,
-      displayMode: 'legacy-unconfirmed',
     })
     expect(resolveStoredSourceReferences([localSource, webSource], ['S9'])).toEqual({
-      sources: [webSource],
+      sources: [localSource, webSource],
       hasValidReferences: false,
-      displayMode: 'web-results',
-    })
-    expect(resolveStoredSourceReferences([localSource], [])).toEqual({
-      sources: [],
-      hasValidReferences: false,
-      displayMode: 'hidden',
     })
     expect(resolveStoredSourceReferences([
       { ...webSource, url: 'javascript:alert(1)' },
     ], undefined)).toEqual({
       sources: [],
       hasValidReferences: false,
-      displayMode: 'hidden',
     })
   })
 })

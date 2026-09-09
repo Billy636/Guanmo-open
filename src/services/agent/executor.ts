@@ -32,7 +32,6 @@ import {
   findSourceReferenceId,
   parseSourceReferences,
   registerSourceReferences,
-  SOURCE_REFERENCE_INSTRUCTION,
   type SourceReferenceRegistry,
 } from '@/services/ai/sourceReferences'
 import {
@@ -202,7 +201,7 @@ function truncateKnowledgeResult(text: string, maxLen: number): string {
 }
 
 function truncateToolResultForModel(toolName: string, text: string, maxLen: number): string {
-  return toolName === 'search_knowledge' || toolName === 'web_search'
+  return toolName === 'search_knowledge'
     ? truncateKnowledgeResult(text, maxLen)
     : truncate(text, maxLen)
 }
@@ -1045,7 +1044,7 @@ async function runAgentInternal({
       const visibleModelResult = prepareVisibleToolResult(name, modelResult)
       messages.push({
         role: 'user',
-        content: `系统已补调 ${name} 工具。请依据结果回答：\n${visibleModelResult}\n\n${SOURCE_REFERENCE_INSTRUCTION}`,
+        content: `系统已补调 ${name} 工具。请依据结果回答：\n${visibleModelResult}`,
       })
     }
 
@@ -1289,7 +1288,7 @@ async function runAgentInternal({
       })
       messages.push({
         role: 'user',
-        content: `工具返回结果：\n${visibleModelResult}\n\n请根据以上信息继续思考或给出最终答案。\n${SOURCE_REFERENCE_INSTRUCTION}`,
+        content: `工具返回结果：\n${visibleModelResult}\n\n请根据以上信息继续思考或给出最终答案。`,
       })
     }
 

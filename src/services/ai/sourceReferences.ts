@@ -12,8 +12,6 @@ export interface SourceReferenceRegistry {
   entries: readonly SourceReferenceEntry[]
 }
 
-export type StoredSourceReferenceDisplayMode = 'confirmed' | 'web-results' | 'legacy-unconfirmed' | 'hidden'
-
 export interface ParsedSourceReferences {
   content: string
   referencedIds: SourceReferenceId[]
@@ -24,10 +22,7 @@ export interface ParsedSourceReferences {
 export interface StoredSourceReferenceSelection {
   sources: ChatMessageSource[]
   hasValidReferences: boolean
-  displayMode: StoredSourceReferenceDisplayMode
 }
-
-export const SOURCE_REFERENCE_INSTRUCTION = '工具结果中的 referenceId 是可引用来源标签；如果回答使用了该结果，必须在对应事实附近保留 [Sx]（例如 [S1]），未使用的结果不要引用。'
 
 const SOURCE_REFERENCE_TOKEN_REGEX = /\[S([1-9]\d*)\]/g
 
@@ -141,8 +136,7 @@ export function parseSourceReferences(
 
 /**
  * 从持久化的完整候选来源中恢复正文实际引用的展示子集。
- * 旧消息没有 ID 时安全降级为完整候选来源；新消息没有合法引用时，本地候选保持空展示；安全的 Web 候选单独降级为
- * 未确认的联网检索结果，避免因模型漏写引用而完全丢失可追溯入口。
+ * 旧消息没有 ID 时，以及所有 ID 都无效时，安全降级为完整候选来源。
  */
 export function resolveStoredSourceReferences(
   sources: readonly ChatMessageSource[] | undefined,
@@ -151,12 +145,8 @@ export function resolveStoredSourceReferences(
   const candidates = (sources ?? []).filter((source) => (
     source.kind !== 'web' || normalizeSafeWebSourceUrl(source.url) !== null
   ))
-  if (referencedIds === undefined) {
-    return {
-      sources: candidates,
-      hasValidReferences: false,
-      displayMode: candidates.length > 0 ? 'legacy-unconfirmed' : 'hidden',
-    }
+  if (!referencedIds?.length) {
+    return { sources: candidates, hasValidReferences: false }
   }
 
   const registry = createSourceReferenceRegistry(candidates)
@@ -173,11 +163,6 @@ export function resolveStoredSourceReferences(
   }
 
   return selected.length > 0
-    ? { sources: selected, hasValidReferences: true, displayMode: 'confirmed' }
-    : (() => {
-        const webCandidates = candidates.filter((source) => source.kind === 'web')
-        return webCandidates.length > 0
-          ? { sources: webCandidates, hasValidReferences: false, displayMode: 'web-results' as const }
-          : { sources: [], hasValidReferences: false, displayMode: 'hidden' as const }
-      })()
+    ? { sources: selected, hasValidReferences: true }
+    : { sources: candidates, hasValidReferences: false }
 }

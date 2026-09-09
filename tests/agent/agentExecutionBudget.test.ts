@@ -31,7 +31,6 @@ describe('Agent execution budget', () => {
   let runAgent: typeof import('@/services/agent/executor').runAgent
   let registerTool: typeof import('@/services/agent/toolRegistry').registerTool
   let originalKnowledgeTool: ReturnType<typeof import('@/services/agent/toolRegistry').getTool>
-  let originalWebTool: ReturnType<typeof import('@/services/agent/toolRegistry').getTool>
   const executeAnonymousRead = vi.fn(async () => '匿名工具结果')
   const executeAnonymousList = vi.fn(async () => '匿名列表结果')
 
@@ -54,7 +53,6 @@ describe('Agent execution budget', () => {
     runAgent = executor.runAgent
     registerTool = registry.registerTool
     originalKnowledgeTool = registry.getTool('search_knowledge')
-    originalWebTool = registry.getTool('web_search')
   })
 
   beforeEach(() => {
@@ -74,7 +72,6 @@ describe('Agent execution budget', () => {
       execute: executeAnonymousRead,
     })
     if (originalKnowledgeTool) registerTool(originalKnowledgeTool)
-    if (originalWebTool) registerTool(originalWebTool)
   })
 
   it('直接复用工具后的模型答案，不再请求第三次最终综合', async () => {
@@ -139,12 +136,7 @@ describe('Agent execution budget', () => {
     expect(executeLongResult).toHaveBeenCalledTimes(1)
     const secondRequest = streamChat.mock.calls[1][0]
     expect(secondRequest.tools?.some((tool) => tool.function.name === 'get_current_time')).toBe(true)
-    const toolMessage = secondRequest.messages.find(
-      (message) => message.role === 'user' && message.content.includes('工具返回结果'),
-    )
-    expect(toolMessage).toBeDefined()
-    expect(toolMessage?.content).toContain('referenceId')
-    expect(toolMessage?.content).toContain('[Sx]')
+    expect(secondRequest.messages.some((message) => message.content.includes('工具返回结果'))).toBe(true)
     expect(secondRequest.messages[0].content).toContain('get_current_time')
     expect(result.answer).toBe('基于证据的匿名答案')
   })
@@ -232,73 +224,6 @@ describe('Agent execution budget', () => {
     expect(parsed.results.length).toBeGreaterThan(0)
     expect(parsed.results.length).toBeLessThan(results.length)
     expect(decodeKnowledgeSearchOutcome(decodeAgentStepEvent(observation!))).toBe('found')
-  })
-
-  it('联网搜索结果会进入 Agent 来源快照，即使模型漏写引用', async () => {
-    registerTool({
-      name: 'web_search',
-      description: '匿名联网搜索',
-      parameters: [],
-      execute: vi.fn(async () => JSON.stringify({
-        status: 'ok',
-        results: [{ title: '匿名网页', url: 'https://example.com/anonymous', snippet: '匿名摘要' }],
-      })),
-    })
-    responseQueue.push(
-      [{
-        content: '',
-        done: true,
-        toolCallDeltas: [{ index: 0, name: 'web_search', arguments: '{}' }],
-      }],
-      [{ content: '没有写引用的联网答案', done: true }],
-    )
-
-    const result = await runAgent({
-      query: '匿名联网搜索请求',
-      candidateToolNames: ['web_search'],
-      streamEnabled: true,
-    })
-
-    expect(result.sources).toEqual([expect.objectContaining({
-      kind: 'web',
-      url: 'https://example.com/anonymous',
-    })])
-    expect(result.referencedSourceIds).toEqual([])
-  })
-
-  it('超长联网搜索结果仍以合法 JSON 传给模型并注册来源', async () => {
-    const results = Array.from({ length: 8 }, (_, index) => ({
-      title: `匿名网页 ${index + 1}`,
-      url: `https://example.com/anonymous-${index + 1}`,
-      snippet: `匿名搜索摘要 ${index + 1}：${'内容'.repeat(120)}`,
-    }))
-    registerTool({
-      name: 'web_search',
-      description: '匿名超长联网搜索',
-      parameters: [],
-      execute: vi.fn(async () => JSON.stringify({ status: 'ok', results }, null, 2)),
-    })
-    responseQueue.push(
-      [{
-        content: '',
-        done: true,
-        toolCallDeltas: [{ index: 0, name: 'web_search', arguments: '{}' }],
-      }],
-      [{ content: '超长联网答案 [S1]', done: true }],
-    )
-
-    const result = await runAgent({
-      query: '匿名超长联网搜索请求',
-      candidateToolNames: ['web_search'],
-      streamEnabled: true,
-    })
-
-    const toolMessage = streamChat.mock.calls[1][0].messages.find(
-      (message) => message.role === 'user' && message.content.startsWith('工具返回结果'),
-    )
-    expect(() => JSON.parse(toolMessage?.content.match(/\{[\s\S]*\}\n\n请根据/)?.[0]?.replace(/\n\n请根据[\s\S]*$/, '') || '')).not.toThrow()
-    expect(result.sources?.length).toBeGreaterThan(0)
-    expect(result.referencedSourceIds).toEqual(['S1'])
   })
 
   it('为同批次的每个工具分别发送执行阶段事件', async () => {

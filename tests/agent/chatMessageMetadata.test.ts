@@ -30,19 +30,6 @@ describe('chat message source metadata compatibility', () => {
     })
   })
 
-  it('保留已确认无引用的空数组状态', () => {
-    const message: ChatMessage = {
-      role: 'assistant',
-      content: '匿名回答',
-      sources: [],
-      referencedSourceIds: [],
-    }
-
-    expect(JSON.parse(encodeChatMessageMetadata(message)!)).toEqual({
-      referencedSourceIds: [],
-    })
-  })
-
   it('旧 metadata 缺少引用字段且异常 ID 会安全降级', () => {
     expect(sanitizeSourceReferenceIds(undefined)).toBeUndefined()
     expect(sanitizeSourceReferenceIds(['S2', 'S2', 'S0', 'S01', 'Sx', 3])).toEqual(['S2'])

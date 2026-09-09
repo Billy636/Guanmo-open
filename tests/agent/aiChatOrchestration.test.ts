@@ -7,7 +7,7 @@ import {
   buildRoutingAppContext,
 } from '@/services/agent/requestBuilder'
 import { prepareAgentToolResultForModel } from '@/services/agent/executor'
-import { buildAgentResultPresentation, extractWebSourcesFromSteps, resolveAgentAnswerSources } from '@/services/agent/sourceMetadata'
+import { buildAgentResultPresentation, resolveAgentAnswerSources } from '@/services/agent/sourceMetadata'
 import { createSourceReferenceRegistry } from '@/services/ai/sourceReferences'
 import type { ContextTag } from '@/types/contextTag'
 
@@ -175,36 +175,8 @@ describe('AI chat orchestration helpers', () => {
       { role: 'assistant', content: '工具结果' },
       {
         role: 'user',
-        content: '如果工具结果不足、记忆不确定、数据不存在或证据太弱，必须明确说不确定或当前信息不足，禁止脑补。\n工具结果中的 referenceId 是可引用来源标签；如果回答使用了该结果，必须在对应事实附近保留 [Sx]（例如 [S1]），未使用的结果不要引用。',
+        content: '如果工具结果不足、记忆不确定、数据不存在或证据太弱，必须明确说不确定或当前信息不足，禁止脑补。',
       },
     ])
-  })
-
-  it('在来源 registry 缺失时从联网搜索 observation 恢复安全 Web 来源', () => {
-    const steps = [{
-      type: 'observation' as const,
-      toolName: 'web_search',
-      content: JSON.stringify({
-        results: [
-          { title: '匿名网页', url: 'https://example.com/anonymous' },
-          { title: '不安全来源', url: 'javascript:alert(1)' },
-        ],
-      }),
-      timestamp: 1,
-    }]
-    const presentation = buildAgentResultPresentation({
-      answer: '联网答案',
-      steps,
-      toolCalls: 1,
-      reason: 'completed',
-      sources: [],
-      sourceRegistry: { entries: [] },
-    }, 0)
-
-    expect(extractWebSourcesFromSteps(steps)).toHaveLength(1)
-    expect(presentation.sources).toEqual([expect.objectContaining({
-      kind: 'web',
-      url: 'https://example.com/anonymous',
-    })])
   })
 })
