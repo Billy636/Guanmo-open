@@ -551,6 +551,56 @@ describe('preview selection bridge', () => {
 // after restore useLayoutEffect set it, causing leftPreviewMasked = true
 // ============================================================
 describe('preview visibility regression: restoredPreviewKeysRef race', () => {
+  describe('进入对照阅读时同步共享阅读位置', () => {
+    it('未指定右栏文件时把共享行号播种到左右两栏', async () => {
+      const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 段`).join('\n\n')
+      setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview')
+      useEditorStore.setState({
+        readingPositions: {
+          'tab-a': { topLine: 40 },
+          'tab-a:left': { previewScrollTop: 120 },
+          'tab-a:right': { previewScrollTop: 840 },
+        },
+      })
+
+      const { container } = render(<EditorArea />)
+      await settleLazyEditorModules()
+
+      act(() => useEditorStore.getState().setViewMode('dual-preview'))
+      act(() => vi.advanceTimersByTime(600))
+
+      expect(useEditorStore.getState().readingPositions['tab-a:left']).toEqual({ topLine: 40 })
+      expect(useEditorStore.getState().readingPositions['tab-a:right']).toEqual({ topLine: 40 })
+      expect(container.querySelectorAll('.overflow-y-auto.overflow-x-hidden.select-text.bg-gm-surface')).toHaveLength(2)
+    })
+
+    it('已指定不同右栏文件时保留右栏自己的阅读位置', async () => {
+      const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 段`).join('\n\n')
+      setupEditor([
+        anonymousTab('tab-a', content),
+        anonymousTab('tab-b', content.replaceAll('段', '节')),
+      ], 'tab-a', 'preview')
+      useEditorStore.setState({
+        rightPaneTabId: 'tab-b',
+        rightPaneUserSelected: true,
+        readingPositions: {
+          'tab-a': { topLine: 40 },
+          'tab-b:right': { previewScrollTop: 700 },
+        },
+      })
+
+      const { container } = render(<EditorArea />)
+      await settleLazyEditorModules()
+
+      act(() => useEditorStore.getState().setViewMode('dual-preview'))
+      act(() => vi.advanceTimersByTime(100))
+
+      const panes = container.querySelectorAll<HTMLElement>('.overflow-y-auto.overflow-x-hidden.select-text.bg-gm-surface')
+      expect(panes).toHaveLength(2)
+      expect(panes[1].scrollTop).toBe(700)
+    })
+  })
+
   describe('mode switch on same tab with saved scroll position', () => {
     it('preview→edit→preview cycle does not permanently hide preview', async () => {
       // The "Document switch" useEffect has viewMode in its dependency array.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { EditorView } from '@codemirror/view'
 import { useEditorStore, type ViewMode } from '@/stores/editorStore'
 import {
@@ -66,6 +66,8 @@ export function useReadingPositionBridge({
   const editorTocFrameRef = useRef<number | null>(null)
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousActiveTabIdRef = useRef<string | null>(activeTabId ?? null)
+  const previousViewModeRef = useRef<ViewMode>(viewMode)
+  const rightPaneUserSelected = useEditorStore((state) => state.rightPaneUserSelected)
   const getStoredPreviewTop = useCallback((tabId: string | null | undefined, pane: 'left' | 'right' = 'left') => {
     if (!tabId || !readingPositionsRef.current) return 0
     const position = useEditorStore.getState().viewMode === 'dual-preview'
@@ -160,6 +162,19 @@ export function useReadingPositionBridge({
     if (tabId) clearPreviewSwitching(tabId)
     setPreviewRestoreTick((tick) => tick + 1)
   }, [clearPreviewSwitching, setPreviewRestoreTick])
+
+  useLayoutEffect(() => {
+    const previousViewMode = previousViewModeRef.current
+    previousViewModeRef.current = viewMode
+    if (viewMode !== 'dual-preview' || previousViewMode === 'dual-preview' || !activeTabId || !readingPositionsRef.current) return
+
+    readingPositionsRef.current.seedPaneFromSharedPosition(activeTabId, 'left')
+    if (!rightPaneUserSelected) {
+      readingPositionsRef.current.seedPaneFromSharedPosition(activeTabId, 'right')
+    }
+    const positions = collectPositions(activeTabId)
+    if (Object.keys(positions).length > 0) flushReadingPositions(positions)
+  }, [activeTabId, collectPositions, flushReadingPositions, rightPaneUserSelected, viewMode])
 
   const restoreEditorReadingPosition = useCallback((tabId: string) => {
     const view = editorViewRef.current

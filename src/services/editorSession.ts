@@ -134,6 +134,17 @@ export class ReadingPositionSession {
     const key = `${tabId}:${pane}`
     this.positions[key] = { ...this.positions[key], ...position }
   }
+
+  seedPaneFromSharedPosition(tabId: string, pane: 'left' | 'right'): ReadingPosition {
+    const shared = this.positions[tabId]
+    const position: ReadingPosition = typeof shared?.topLine === 'number'
+      ? { topLine: shared.topLine }
+      : typeof shared?.previewScrollTop === 'number'
+        ? { previewScrollTop: shared.previewScrollTop }
+        : { topLine: 1 }
+    this.positions[`${tabId}:${pane}`] = position
+    return position
+  }
 }
 
 export class ScrollSyncSession {
