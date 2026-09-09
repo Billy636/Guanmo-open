@@ -129,17 +129,21 @@ describe('source reference registry', () => {
     expect(parseSourceReferences('依据 [S1]。', registry).referencedSources).toEqual([legacyLocalSource])
   })
 
-  it('从完整候选来源恢复合法引用子集，旧消息或全无效 ID 安全降级', () => {
+  it('从完整候选来源恢复合法引用子集，并区分旧消息与已确认无引用', () => {
     expect(resolveStoredSourceReferences([localSource, webSource], ['S2', 'S9', 'S2'])).toEqual({
       sources: [webSource],
       hasValidReferences: true,
+    })
+    expect(resolveStoredSourceReferences([localSource, webSource], [])).toEqual({
+      sources: [],
+      hasValidReferences: false,
     })
     expect(resolveStoredSourceReferences([localSource, webSource], undefined)).toEqual({
       sources: [localSource, webSource],
       hasValidReferences: false,
     })
     expect(resolveStoredSourceReferences([localSource, webSource], ['S9'])).toEqual({
-      sources: [localSource, webSource],
+      sources: [],
       hasValidReferences: false,
     })
     expect(resolveStoredSourceReferences([

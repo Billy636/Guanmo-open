@@ -693,6 +693,10 @@ export function useAiChat() {
       if (isCurrentRequest()) updateMessageContextMeta(assistantMessageId, contextMeta)
       if (isCurrentRequest() && messageSources.length > 0) {
         updateMessageSources(assistantMessageId, messageSources)
+        if (directRagRegistry.entries.length > 0) {
+          // Direct RAG 候选来源在回答完成前不应被当作已确认引用展示。
+          updateMessageReferencedSourceIds(assistantMessageId, [])
+        }
       }
 
       updateRequestMessage('正在判断处理方式...')

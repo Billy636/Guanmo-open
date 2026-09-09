@@ -136,7 +136,8 @@ export function parseSourceReferences(
 
 /**
  * 从持久化的完整候选来源中恢复正文实际引用的展示子集。
- * 旧消息没有 ID 时，以及所有 ID 都无效时，安全降级为完整候选来源。
+ * 旧消息没有 ID 时安全降级为完整候选来源；新消息即使没有合法引用，
+ * 也必须保持空展示，避免把未确认候选误显示为实际引用。
  */
 export function resolveStoredSourceReferences(
   sources: readonly ChatMessageSource[] | undefined,
@@ -145,7 +146,7 @@ export function resolveStoredSourceReferences(
   const candidates = (sources ?? []).filter((source) => (
     source.kind !== 'web' || normalizeSafeWebSourceUrl(source.url) !== null
   ))
-  if (!referencedIds?.length) {
+  if (referencedIds === undefined) {
     return { sources: candidates, hasValidReferences: false }
   }
 
@@ -164,5 +165,5 @@ export function resolveStoredSourceReferences(
 
   return selected.length > 0
     ? { sources: selected, hasValidReferences: true }
-    : { sources: candidates, hasValidReferences: false }
+    : { sources: [], hasValidReferences: false }
 }

@@ -209,6 +209,26 @@ describe('阅读来源展示', () => {
     expect(screen.getByRole('button', { name: /used\.md/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /unused\.md/ })).not.toBeInTheDocument()
   })
+
+  it('已确认没有合法引用时不展示候选来源', () => {
+    render(<ChatBubble
+      role="assistant"
+      content="匿名回答"
+      isLast={false}
+      streaming={false}
+      sources={[{
+        kind: 'local',
+        filePath: 'C:\\Temp\\candidate.md',
+        fileName: 'candidate.md',
+        startLine: 1,
+        endLine: 2,
+      }]}
+      referencedSourceIds={[]}
+      onOpenSource={vi.fn()}
+    />)
+
+    expect(screen.queryByRole('button', { name: /来源/ })).not.toBeInTheDocument()
+  })
 })
 
 describe('保存回复交互', () => {
