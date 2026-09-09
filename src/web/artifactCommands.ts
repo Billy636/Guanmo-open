@@ -1,4 +1,8 @@
 import { UnsupportedCapabilityError } from './externalHttp'
+import type {
+  LoadReadingArtifactsPageOptions,
+  ReadingArtifactsPage,
+} from '@/services/database/readingArtifacts'
 
 export type ReadingArtifactType = 'summary' | 'question_set' | 'annotation' | 'note'
 export type SourceAnchorStatus = 'valid' | 'changed' | 'missing'
@@ -58,6 +62,12 @@ export interface AnnotationStructuredContent {
 
 function unsupported(): never {
   throw new UnsupportedCapabilityError('阅读成果与批注')
+}
+
+export function loadReadingArtifactsPageCommand(
+  _options: LoadReadingArtifactsPageOptions,
+): Promise<ReadingArtifactsPage> {
+  return unsupported()
 }
 
 export function getAnnotationStructuredContent(_artifact: ReadingArtifact): AnnotationStructuredContent | null { return unsupported() }

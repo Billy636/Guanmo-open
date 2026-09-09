@@ -46,6 +46,13 @@ const capturedViews = vi.hoisted(() => {
 // Mock replaceMarkdownBlock for pending/conflict tests
 const replaceMarkdownBlockMock = vi.hoisted(() => vi.fn())
 
+const readingMarksMocks = vi.hoisted(() => ({
+  load: vi.fn(),
+  loadPage: vi.fn(),
+}))
+
+const runtimeCapabilities = vi.hoisted(() => ({ database: false }))
+
 vi.mock('@/hooks/useActiveHeading', () => ({ useActiveHeading: () => null }))
 vi.mock('@/hooks/useTauri', () => ({ isTauri: vi.fn(() => false), openFileDialog: vi.fn(), openUrl: vi.fn() }))
 vi.mock('@/services/fileSystem', () => ({ saveFile: vi.fn(), saveFileAs: vi.fn() }))
@@ -80,6 +87,21 @@ vi.mock('@/hooks/useFileOperations', () => ({
 }))
 vi.mock('@/services/fileOperationErrors', () => ({ describeFileOperationError: vi.fn(() => 'anonymous error') }))
 vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((src: string) => src) }))
+vi.mock('@/services/readingMarks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/readingMarks')>()),
+  loadReadingMarks: readingMarksMocks.load,
+  loadReadingMarksPage: readingMarksMocks.loadPage,
+}))
+vi.mock('@/services/runtimeCapabilities', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/runtimeCapabilities')>()
+  return {
+    ...actual,
+    getRuntimeCapabilities: () => ({
+      ...actual.getRuntimeCapabilities(),
+      database: runtimeCapabilities.database,
+    }),
+  }
+})
 
 vi.mock('@/services/markdownBlocks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/markdownBlocks')>()
@@ -158,6 +180,13 @@ function resourceBalance(resource: 'editor' | 'left-preview' | 'right-preview' |
   return countResourceEvent('model-create', resource) - countResourceEvent('model-dispose', resource)
 }
 
+function savedTab(id: string, filePath: string, content: string): Tab {
+  return {
+    ...anonymousTab(id, content),
+    filePath,
+  }
+}
+
 async function waitForAsyncCommit(expectedCalls: number) {
   await act(async () => {
     await vi.dynamicImportSettled()
@@ -228,6 +257,9 @@ beforeEach(() => {
   lifecycle.events.length = 0
   capturedViews.views.length = 0
   replaceMarkdownBlockMock.mockReset()
+  readingMarksMocks.load.mockReset().mockResolvedValue([])
+  readingMarksMocks.loadPage.mockReset().mockResolvedValue([])
+  runtimeCapabilities.database = false
   // Default: replaceMarkdownBlock returns applied
   replaceMarkdownBlockMock.mockImplementation((content: string, _block: unknown, draft: string) => {
     const block = _block as { startOffset: number; endOffset: number; rawSource: string }
@@ -1186,6 +1218,36 @@ describe('Preview mode editor suppression', () => {
 
     expect(countEvent('editor-create')).toBe(1)
     expect(resourceBalance('editor')).toBe(1)
+  })
+})
+
+describe('Reading mark startup readiness', () => {
+  it('waits for database readiness and loads the current document only', async () => {
+    runtimeCapabilities.database = true
+    setup([
+      savedTab('doc-a', 'C:/anonymous/a.md', '# A'),
+      savedTab('doc-b', 'C:/anonymous/b.md', '# B'),
+    ], 'doc-a', 'preview')
+
+    const view = render(<EditorArea databaseReady={false} />)
+    view.rerender(<EditorArea databaseReady={false} />)
+    expect(readingMarksMocks.load).not.toHaveBeenCalled()
+
+    act(() => useEditorStore.getState().setActiveTab('doc-b'))
+    view.rerender(<EditorArea databaseReady />)
+    await act(async () => { await Promise.resolve() })
+
+    expect(readingMarksMocks.load).toHaveBeenCalledTimes(1)
+    expect(readingMarksMocks.load).toHaveBeenCalledWith('C:/anonymous/b.md')
+  })
+
+  it('does not load reading marks in edit mode', async () => {
+    runtimeCapabilities.database = true
+    setup([savedTab('doc-a', 'C:/anonymous/a.md', '# A')], 'doc-a', 'edit')
+    render(<EditorArea databaseReady />)
+    await act(async () => { await Promise.resolve() })
+
+    expect(readingMarksMocks.load).not.toHaveBeenCalled()
   })
 })
 

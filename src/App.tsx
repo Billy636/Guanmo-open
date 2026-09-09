@@ -491,7 +491,7 @@ function App() {
   return (
     <>
       <CustomCursorFrame enabled={customCursorEnabled}>
-        <AppLayout />
+        <AppLayout databaseReady={appReady} />
       </CustomCursorFrame>
       <ToastContainer />
       {DevPerfMonitorPanel && <Suspense fallback={null}><DevPerfMonitorPanel /></Suspense>}

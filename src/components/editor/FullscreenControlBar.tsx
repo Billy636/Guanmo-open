@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEditorStore, type Tab } from '@/stores/editorStore'
 import { useAppStore } from '@/stores/appStore'
 import { FULLSCREEN_CONTENT_PADDING, useSettingsStore, type ThemeId } from '@/stores/settingsStore'
+import { createAppearanceRegistry, type ThemeDefinition } from '@/services/appearance/appearanceRegistry'
 import { addFileContextTag, summarizeFileWithAi } from '@/services/aiContext'
 import { addKnowledgeDocument, isKnowledgeDocumentIndexed } from '@/services/rag/knowledgeBase'
 import { isMarkdownPath } from '@/services/rag/indexer'
@@ -24,14 +25,6 @@ const MODES: Array<{ key: ViewMode; label: string }> = [
   { key: 'dual-preview', label: '对照' },
   { key: 'diff-preview', label: 'Diff' },
 ]
-const FULLSCREEN_THEME_OPTIONS = [
-  { key: 'warm', label: '暖色' },
-  { key: 'light', label: '浅色' },
-  { key: 'dark', label: '深色' },
-  { key: 'paper', label: 'Paper' },
-  { key: 'github-light', label: 'GitHub Light' },
-] satisfies Array<{ key: ThemeId; label: string }>
-
 const PANEL_CONTENT_REVEAL_DELAY = 190
 const FULLSCREEN_PADDING_DEBOUNCE_MS = 150
 
@@ -58,9 +51,11 @@ export function FullscreenControlBar({
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen)
   const toggleAiPanel = useAppStore((s) => s.toggleAiPanel)
   const themeId = useSettingsStore((s) => s.appearance.themeId)
+  const themeSlots = useSettingsStore((s) => s.appearance.themeSlots)
   const fullscreenContentPadding = useSettingsStore((s) => s.editor.fullscreenContentPadding)
   const updateAppearanceSettings = useSettingsStore((s) => s.updateAppearanceSettings)
   const updateEditorSettings = useSettingsStore((s) => s.updateEditorSettings)
+  const fullscreenThemes = useMemo(() => createAppearanceRegistry(themeSlots).themes, [themeSlots])
   const { exitFullscreen } = useFullscreen()
   const [visible, setVisible] = useState(false)
   const [tabMode, setTabMode] = useState(false)
@@ -587,6 +582,7 @@ export function FullscreenControlBar({
             </div>
             <FullscreenThemeSegmented
               value={themeId}
+              themes={fullscreenThemes}
               onChange={selectFullscreenTheme}
             />
           </div>
@@ -721,24 +717,26 @@ function Separator() {
 
 function FullscreenThemeSegmented({
   value,
+  themes,
   onChange,
 }: {
   value: ThemeId
+  themes: readonly ThemeDefinition[]
   onChange: (value: ThemeId) => void
 }) {
   return (
     <div className="gm-light-palette-segmented gm-fullscreen-theme-segmented mt-3" role="radiogroup" aria-label="主题">
-      {FULLSCREEN_THEME_OPTIONS.map((option) => (
+      {themes.map((theme) => (
         <button
-          key={option.key}
+          key={theme.id}
           type="button"
           className="gm-light-palette-segmented__item"
-          data-active={value === option.key}
+          data-active={value === theme.id}
           role="radio"
-          aria-checked={value === option.key}
-          onClick={() => onChange(option.key)}
+          aria-checked={value === theme.id}
+          onClick={() => onChange(theme.id)}
         >
-          {option.label}
+          {theme.label}
         </button>
       ))}
     </div>

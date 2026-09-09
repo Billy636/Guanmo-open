@@ -67,7 +67,11 @@ function BootDocumentFallback() {
   )
 }
 
-export function AppLayout() {
+interface AppLayoutProps {
+  databaseReady: boolean
+}
+
+export function AppLayout({ databaseReady }: AppLayoutProps) {
   const [editorSurfaceEnabled, setEditorSurfaceEnabled] = useState(false)
 
   useLayoutEffect(() => {
@@ -474,7 +478,7 @@ export function AppLayout() {
         {/* Editor Area */}
         <div className="flex-1 flex overflow-hidden">
           {editorSurfaceEnabled
-            ? <Suspense fallback={<BootDocumentFallback />}><EditorArea /></Suspense>
+            ? <Suspense fallback={<BootDocumentFallback />}><EditorArea databaseReady={databaseReady} /></Suspense>
             : <BootDocumentFallback />}
         </div>
 

@@ -117,7 +117,12 @@ const SCROLL_SYNC_EXTERNAL_DRIFT_PX = 1
 const PREVIEW_SWITCH_MARK_PREFIX = 'guanmo:preview-switch'
 const EMPTY_READING_MARKS: ReadingMark[] = []
 
-export function EditorArea() {
+interface EditorAreaProps {
+  /** Standalone editor tests mount this component without the application bootstrap. */
+  databaseReady?: boolean
+}
+
+export function EditorArea({ databaseReady = true }: EditorAreaProps) {
   const tabs = useEditorStore((s) => s.tabs)
   const activeTabId = useEditorStore((s) => s.activeTabId)
   const updateTabContent = useEditorStore((s) => s.updateTabContent)
@@ -236,14 +241,14 @@ export function EditorArea() {
   ))
 
   useEffect(() => {
-    if (!readingMarksEnabled || !leftPreviewVisible || !activeTab?.filePath) return
+    if (!databaseReady || !readingMarksEnabled || !leftPreviewVisible || !activeTab?.filePath) return
     void loadReadingMarksForDocument(activeTab.filePath)
-  }, [activeTab?.filePath, leftPreviewVisible, loadReadingMarksForDocument, readingMarksEnabled])
+  }, [activeTab?.filePath, databaseReady, leftPreviewVisible, loadReadingMarksForDocument, readingMarksEnabled])
 
   useEffect(() => {
-    if (!readingMarksEnabled || viewMode !== 'dual-preview' || !rightTab?.filePath) return
+    if (!databaseReady || !readingMarksEnabled || viewMode !== 'dual-preview' || !rightTab?.filePath) return
     void loadReadingMarksForDocument(rightTab.filePath)
-  }, [loadReadingMarksForDocument, readingMarksEnabled, rightTab?.filePath, viewMode])
+  }, [databaseReady, loadReadingMarksForDocument, readingMarksEnabled, rightTab?.filePath, viewMode])
 
   const handleCreateReadingMark = useCallback(async (selection: PreviewSelectionSnapshot, color: ReadingMarkColor, note: string | undefined, model: import('@/services/markdownPreviewModel').MarkdownPreviewModel) => {
     if (!activeTab?.filePath) throw new Error('批注仅支持已保存的 Markdown 文件')

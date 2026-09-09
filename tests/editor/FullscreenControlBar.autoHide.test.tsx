@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FullscreenControlBar } from '@/components/editor/FullscreenControlBar'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 vi.mock('@/hooks/useFullscreen', () => ({
   useFullscreen: () => ({ exitFullscreen: vi.fn() }),
@@ -12,6 +13,7 @@ describe('FullscreenControlBar auto hide', () => {
   })
 
   afterEach(() => {
+    useSettingsStore.getState().restoreDefaultThemes()
     vi.useRealTimers()
   })
 
@@ -57,5 +59,34 @@ describe('FullscreenControlBar auto hide', () => {
     act(() => vi.advanceTimersByTime(700))
 
     expect(bar).toHaveClass('opacity-0')
+  })
+
+  it('uses the current settings theme slots in fullscreen', () => {
+    expect(useSettingsStore.getState().removeTheme('paper')).toBe(true)
+    expect(useSettingsStore.getState().addCustomTheme({
+      id: 'custom-sea',
+      label: '海盐蓝',
+      description: '清爽蓝色',
+      colorScheme: 'light',
+      startupCanvas: '#F5F8FC',
+      palette: {
+        canvas: '#F5F8FC', surface: '#FFFFFF', elevated: '#EEF4FA', text: '#1F2937', mutedText: '#64748B',
+        border: '#CBD5E1', primary: '#2563EB', onPrimary: '#FFFFFF', accent: '#0F766E', editorBackground: '#FFFFFF',
+        heading: '#172554', link: '#1D4ED8', codeBackground: '#EFF6FF', codeText: '#1E3A8A', selection: '#93C5FD',
+        success: '#16A34A', warning: '#D97706', error: '#DC2626',
+      },
+    })).toBe(true)
+
+    const { container } = render(
+      <FullscreenControlBar
+        fileDrawerOpen={false}
+        onToggleFileDrawer={vi.fn()}
+        onCloseFileDrawer={vi.fn()}
+      />,
+    )
+    fireEvent.click(container.querySelector('[data-fullscreen-theme-control] button[title="选择主题"]')!)
+
+    const options = Array.from(container.querySelectorAll('#fullscreen-theme-card button')).map((button) => button.textContent)
+    expect(options).toEqual(['暖色', '浅色', '深色', 'GitHub Light', '海盐蓝'])
   })
 })

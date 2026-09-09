@@ -165,6 +165,19 @@ describe('设置兼容', () => {
     ])
   })
 
+  it('重启恢复时保留已删除主题的空槽位', async () => {
+    const store = await loadSettingsStore()
+    expect(store.getState().removeTheme('paper')).toBe(true)
+    const persisted = JSON.parse(localStorage.getItem('guanmo-settings') || '{}') as { state?: unknown }
+
+    const reloadedStore = await loadSettingsStore(persisted.state)
+
+    expect(reloadedStore.getState().appearance.themeSlots).toEqual([
+      null,
+      { kind: 'builtin', themeId: 'github-light' },
+    ])
+  })
+
   it('旧模型和搜索配置缺少超时时补默认值，越界值会被限制', async () => {
     const defaultedStore = await loadSettingsStore({
       ai: { baseUrl: 'http://localhost:11434', embedding: { baseUrl: 'http://localhost:11434' } },

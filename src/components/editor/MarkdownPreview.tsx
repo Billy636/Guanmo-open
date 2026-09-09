@@ -664,7 +664,14 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
 
     initialScrollIdentityRef.current = initialScrollIdentity
     scrollContainerRef.current = container
-    container.scrollTop = initialScrollTarget
+    const hasExplicitInitialPosition = typeof initialScrollTop === 'number'
+      || Number.isInteger(initialTopLine)
+    const nextInitialScrollTop = hasExplicitInitialPosition
+      ? initialScrollTarget
+      : Math.max(0, container.scrollTop)
+    if (Math.abs(container.scrollTop - nextInitialScrollTop) >= 1) {
+      container.scrollTop = nextInitialScrollTop
+    }
     lastObservedScrollTopRef.current = container.scrollTop
     initialScrollReadyRef.current = true
 
@@ -677,7 +684,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       scrollStateRef.current = nextState
       setScrollState(nextState)
     }
-  }, [initialScrollIdentity, initialScrollTarget, isVisible])
+  }, [initialScrollIdentity, initialScrollTarget, initialScrollTop, initialTopLine, isVisible])
 
   useLayoutEffect(() => {
     if (!isVisible || !initialScrollReadyRef.current || firstVisibleRef.current || !rootRef.current) return

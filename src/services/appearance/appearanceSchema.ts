@@ -129,6 +129,7 @@ export function resolveAppearanceConfig(appearance: unknown): AppearanceConfigV1
 }
 
 function normalizeThemeSlot(value: unknown, fallback: ThemeSlot): ThemeSlot {
+  if (value === null) return null
   const slot = asRecord(value)
   if (!slot || (slot.kind !== 'builtin' && slot.kind !== 'custom')) return fallback
   if (slot.kind === 'builtin') {

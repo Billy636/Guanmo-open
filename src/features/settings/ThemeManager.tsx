@@ -128,11 +128,6 @@ export function ThemeManager() {
         onAddSlot={openAdd}
         onRemove={(theme) => { setPendingDelete(theme); setDialog('delete') }}
       />
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="text-micro text-gm-text-tertiary">自定义主题只保存在本机设置中，不会上传到观墨。</p>
-        <Button type="text" size="small" onClick={() => void copyPrompt()}>复制 AI 提示词</Button>
-      </div>
-
       {dialog === 'add' && (
         <div className={`gm-settings-mask gm-ai-shortcut-dialog-mask fixed inset-0 z-[1100] flex items-center justify-center p-4 ${closing ? 'is-closing pointer-events-none' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog() }}>
           <div className={`gm-settings-modal gm-ai-shortcut-dialog-panel w-full max-w-[560px] ${closing ? 'is-closing' : ''}`}>

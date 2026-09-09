@@ -114,7 +114,7 @@ export default function WebApp() {
 
   return (
     <>
-      <AppLayout />
+      <AppLayout databaseReady={true} />
       <ToastContainer />
       <GlobalTooltip />
     </>
