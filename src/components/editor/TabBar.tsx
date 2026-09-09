@@ -21,6 +21,7 @@ type ViewMode = 'edit' | 'preview' | 'edit-preview' | 'dual-preview' | 'diff-pre
 export function TabBar({ onOpenSettings }: TabBarProps) {
   const tabs = useEditorStore((s) => s.tabs)
   const activeTabId = useEditorStore((s) => s.activeTabId)
+  const createNewDocument = useEditorStore((s) => s.createNewDocument)
   const setActiveTab = useEditorStore((s) => s.setActiveTab)
   const closeTab = useEditorStore((s) => s.closeTab)
   const reorderTabs = useEditorStore((s) => s.reorderTabs)
@@ -374,6 +375,17 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
               </div>
             )
           })}
+          <button
+            type="button"
+            aria-label="新建文档 (Ctrl+N)"
+            title="新建文档 (Ctrl+N)"
+            onClick={createNewDocument}
+            className="mx-1.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-gm-text-tertiary opacity-60 transition-colors hover:bg-gm-surface-hover hover:text-gm-primary hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gm-primary/40"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
         </div>
 
         {/* View mode switcher */}

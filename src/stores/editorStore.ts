@@ -71,6 +71,7 @@ interface EditorState {
 
   openTab: (tab: Tab) => void
   addTab: (filePath?: string, title?: string, content?: string) => void
+  createNewDocument: () => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
   clearPreviewSwitching: (tabId?: string) => void
@@ -311,6 +312,11 @@ export const useEditorStore = create<EditorState>()(
         if (filePath && title) {
           get().addRecentFile(filePath, title)
         }
+      },
+
+      createNewDocument: () => {
+        get().setViewMode('edit')
+        get().addTab(undefined, '未命名.md')
       },
 
       closeTab: (id) => {

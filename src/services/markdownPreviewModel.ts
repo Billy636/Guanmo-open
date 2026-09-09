@@ -235,6 +235,8 @@ export interface MarkdownPreviewModel {
   _blockStartOffsets: number[]
 }
 
+export const MARKDOWN_GFM_OPTIONS = { singleTilde: false } as const
+
 interface MdastPositioned {
   type: string
   lang?: string | null
@@ -250,7 +252,7 @@ interface MdastPositioned {
   }
 }
 
-const remarkParser = remark().use(remarkGfm).use(remarkMath)
+const remarkParser = remark().use(remarkGfm, MARKDOWN_GFM_OPTIONS).use(remarkMath)
 
 const HTML_VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'])
 

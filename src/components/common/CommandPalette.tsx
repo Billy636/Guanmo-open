@@ -35,7 +35,7 @@ export function CommandPalette({ open, onClose, mode = 'commands' }: CommandPale
   const listRef = useRef<HTMLDivElement>(null)
 
   const handleNewFile = useCallback(() => {
-    useEditorStore.getState().addTab(undefined, '未命名.md')
+    useEditorStore.getState().createNewDocument()
     onClose()
   }, [onClose])
 

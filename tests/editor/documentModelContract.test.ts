@@ -69,6 +69,32 @@ describe('文档模型契约（invariants 见 docs/architecture/state-ownership.
     expect(currentTabs()).toHaveLength(2)
   })
 
+  it('新建文档统一切换到编辑模式且不继承当前文档内容', () => {
+    const modes: ViewMode[] = ['preview', 'edit-preview', 'dual-preview', 'diff-preview']
+
+    for (const mode of modes) {
+      useEditorStore.getState().setViewMode(mode)
+      useEditorStore.getState().createNewDocument()
+
+      const state = useEditorStore.getState()
+      const newTab = state.tabs.find((tab) => tab.id === state.activeTabId)
+      expect(state.viewMode).toBe('edit')
+      expect(state.previewVisible).toBe(false)
+      expect(newTab).toMatchObject({
+        title: '未命名.md',
+        filePath: null,
+        content: '',
+        savedContent: '',
+        originalContent: '',
+      })
+    }
+
+    expect(tabContentSnapshot()).toContain('第一份匿名文档内容')
+    expect(tabContentSnapshot()).toContain('第二份匿名文档内容')
+    expect(useEditorStore.getState().tabs.find((tab) => tab.id === TAB_A.id)?.content).toBe(TAB_A.content)
+    expect(useEditorStore.getState().tabs.find((tab) => tab.id === TAB_B.id)?.content).toBe(TAB_B.content)
+  })
+
   it('开关预览与切换右 pane 不修改 Tab 内容', () => {
     const snapshot = tabContentSnapshot()
 

@@ -13,14 +13,15 @@ const AUTO_SAVE_INDEX_DELAY = 5000
 
 export function useFileOperations() {
   const addTab = useEditorStore((s) => s.addTab)
+  const createNewDocument = useEditorStore((s) => s.createNewDocument)
   const tabs = useEditorStore((s) => s.tabs)
   const editor = useSettingsStore((s) => s.editor)
   const autoSaveTimersRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; content: string }>>(new Map())
   const autoSaveRetriesRef = useRef<Map<string, number>>(new Map())
 
   const handleNewFile = useCallback(() => {
-    addTab(undefined, '未命名.md')
-  }, [addTab])
+    createNewDocument()
+  }, [createNewDocument])
 
   const handleOpenFile = useCallback(async () => {
     try {

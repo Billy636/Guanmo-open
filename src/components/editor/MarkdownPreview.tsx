@@ -13,7 +13,7 @@ import { isTauri } from '@/hooks/useTauri'
 import { createHeadingId } from '@/services/markdownToc'
 import { remarkStandaloneDisplayMath } from '@/services/markdownMath'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { createMarkdownPreviewModel, computeVisibleRange, findAnchorTarget, findBlockIndexByLine, findBlockIndexByOffset, getEstimatedPreviewLineForTop, getEstimatedPreviewTopForLine, getSourceOffsetForLine, searchVisibleText, type MarkdownPreviewModel, type PreviewBlock } from '@/services/markdownPreviewModel'
+import { createMarkdownPreviewModel, computeVisibleRange, findAnchorTarget, findBlockIndexByLine, findBlockIndexByOffset, getEstimatedPreviewLineForTop, getEstimatedPreviewTopForLine, getSourceOffsetForLine, MARKDOWN_GFM_OPTIONS, searchVisibleText, type MarkdownPreviewModel, type PreviewBlock } from '@/services/markdownPreviewModel'
 import {
   buildDocumentRangeInfo,
   buildDomRangesForSourceRange,
@@ -54,7 +54,7 @@ function InlineMarkdownEditorSuspenseFallback() {
   return <div className="gm-inline-markdown-editor min-h-12" aria-hidden="true" />
 }
 
-const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath, remarkStandaloneDisplayMath]
+const MARKDOWN_REMARK_PLUGINS: Options['remarkPlugins'] = [[remarkGfm, MARKDOWN_GFM_OPTIONS], remarkMath, remarkStandaloneDisplayMath]
 const SOURCE_REVEAL_DURATION_MS = 1600
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex, rehypeHighlight]
 type RehypePlugins = NonNullable<Options['rehypePlugins']>
