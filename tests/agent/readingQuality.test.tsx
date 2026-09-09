@@ -209,6 +209,27 @@ describe('阅读来源展示', () => {
     expect(screen.getByRole('button', { name: /used\.md/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /unused\.md/ })).not.toBeInTheDocument()
   })
+
+  it('联网搜索候选来源可作为未确认引用展示并打开原始链接', () => {
+    render(<ChatBubble
+      role="assistant"
+      content="匿名联网回答"
+      isLast={false}
+      streaming={false}
+      sources={[{
+        kind: 'web',
+        title: '匿名网页',
+        url: 'https://example.com/anonymous',
+        siteName: 'example.com',
+      }]}
+      referencedSourceIds={[]}
+      onOpenSource={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: '检索来源/未确认引用 1' }))
+    expect(screen.getByRole('link', { name: /匿名网页/ }))
+      .toHaveAttribute('href', 'https://example.com/anonymous')
+  })
 })
 
 describe('保存回复交互', () => {

@@ -31,6 +31,7 @@ describe('Agent execution budget', () => {
   let runAgent: typeof import('@/services/agent/executor').runAgent
   let registerTool: typeof import('@/services/agent/toolRegistry').registerTool
   let originalKnowledgeTool: ReturnType<typeof import('@/services/agent/toolRegistry').getTool>
+  let originalWebSearchTool: ReturnType<typeof import('@/services/agent/toolRegistry').getTool>
   const executeAnonymousRead = vi.fn(async () => '匿名工具结果')
   const executeAnonymousList = vi.fn(async () => '匿名列表结果')
 
@@ -53,6 +54,7 @@ describe('Agent execution budget', () => {
     runAgent = executor.runAgent
     registerTool = registry.registerTool
     originalKnowledgeTool = registry.getTool('search_knowledge')
+    originalWebSearchTool = registry.getTool('web_search')
   })
 
   beforeEach(() => {
@@ -72,6 +74,7 @@ describe('Agent execution budget', () => {
       execute: executeAnonymousRead,
     })
     if (originalKnowledgeTool) registerTool(originalKnowledgeTool)
+    if (originalWebSearchTool) registerTool(originalWebSearchTool)
   })
 
   it('直接复用工具后的模型答案，不再请求第三次最终综合', async () => {
@@ -224,6 +227,60 @@ describe('Agent execution budget', () => {
     expect(parsed.results.length).toBeGreaterThan(0)
     expect(parsed.results.length).toBeLessThan(results.length)
     expect(decodeKnowledgeSearchOutcome(decodeAgentStepEvent(observation!))).toBe('found')
+  })
+
+  it('超长联网搜索结果保持结构完整并只登记模型可见来源', async () => {
+    const results = Array.from({ length: 8 }, (_, index) => ({
+      title: `匿名网页 ${index + 1}`,
+      url: `https://example.com/anonymous-${index + 1}`,
+      siteName: 'example.com',
+      snippet: `匿名联网证据 ${index + 1}：${'内容'.repeat(500)}`,
+    }))
+    registerTool({
+      name: 'web_search',
+      description: '匿名联网搜索',
+      parameters: [],
+      execute: vi.fn(async () => JSON.stringify({
+        status: 'ok',
+        query: '匿名联网问题',
+        totalResults: results.length,
+        results,
+      }, null, 2)),
+    })
+    responseQueue.push(
+      [{
+        content: '',
+        done: true,
+        toolCallDeltas: [{ index: 0, name: 'web_search', arguments: '{}' }],
+      }],
+      [{ content: '匿名联网答案', done: true }],
+    )
+
+    const result = await runAgent({
+      query: '匿名联网问题',
+      candidateToolNames: ['web_search'],
+      requiredCapabilities: ['web'],
+      contextWindowTokens: 8192,
+      streamEnabled: true,
+    })
+
+    const toolMessage = streamChat.mock.calls[1][0].messages.find(
+      (message) => message.role === 'user' && message.content.startsWith('工具返回结果'),
+    )
+    const serializedResult = toolMessage?.content
+      .slice('工具返回结果：\n'.length)
+      .split('\n\n请根据以上信息继续思考或给出最终答案。')[0]
+    const parsed = JSON.parse(serializedResult || '') as {
+      results: Array<{ url: string; referenceId: string }>
+    }
+    const visibleUrls = parsed.results.map((source) => source.url)
+
+    expect(parsed.results.length).toBeGreaterThan(0)
+    expect(parsed.results.length).toBeLessThan(results.length)
+    expect(parsed.results.every((source) => /^\[S\d+\]$/.test(source.referenceId))).toBe(true)
+    expect(result.sources?.map((source) => source.kind === 'web' ? source.url : source.filePath))
+      .toEqual(visibleUrls)
+    expect(result.answer).toBe('匿名联网答案')
   })
 
   it('为同批次的每个工具分别发送执行阶段事件', async () => {

@@ -200,10 +200,69 @@ function truncateKnowledgeResult(text: string, maxLen: number): string {
   }
 }
 
+function truncateWebSearchResult(text: string, maxLen: number): string {
+  try {
+    const parsed = JSON.parse(text)
+    if (!isPlainObject(parsed) || !Array.isArray(parsed.results)) return truncate(text, maxLen)
+
+    const totalResultCount = parsed.results.length
+    const serialize = (results: unknown[]) => JSON.stringify({
+      ...parsed,
+      status: results.length > 0 ? parsed.status : 'truncated',
+      resultCount: results.length,
+      totalResultCount,
+      omittedResultCount: totalResultCount - results.length,
+      results,
+    }, null, 2)
+    const fitsAfterReferenceAnnotation = (results: unknown[]) => serialize(
+      results.map((result) => isPlainObject(result)
+        ? { ...result, referenceId: '[S999999999]' }
+        : result),
+    ).length <= maxLen
+
+    if (fitsAfterReferenceAnnotation(parsed.results)) return text
+
+    const included: unknown[] = []
+    for (const result of parsed.results) {
+      if (fitsAfterReferenceAnnotation([...included, result])) {
+        included.push(result)
+        continue
+      }
+
+      if (!isPlainObject(result) || typeof result.snippet !== 'string') break
+      const { snippet, ...sourceMetadata } = result
+      if (!fitsAfterReferenceAnnotation([...included, sourceMetadata])) break
+
+      let low = 0
+      let high = snippet.length
+      let compactResult: Record<string, unknown> = sourceMetadata
+      while (low <= high) {
+        const length = Math.floor((low + high) / 2)
+        const candidate = {
+          ...sourceMetadata,
+          snippet: length < snippet.length ? `${snippet.slice(0, length)}…` : snippet,
+        }
+        if (fitsAfterReferenceAnnotation([...included, candidate])) {
+          compactResult = candidate
+          low = length + 1
+        } else {
+          high = length - 1
+        }
+      }
+      included.push(compactResult)
+      break
+    }
+
+    return serialize(included)
+  } catch {
+    return truncate(text, maxLen)
+  }
+}
+
 function truncateToolResultForModel(toolName: string, text: string, maxLen: number): string {
-  return toolName === 'search_knowledge'
-    ? truncateKnowledgeResult(text, maxLen)
-    : truncate(text, maxLen)
+  if (toolName === 'search_knowledge') return truncateKnowledgeResult(text, maxLen)
+  if (toolName === 'web_search') return truncateWebSearchResult(text, maxLen)
+  return truncate(text, maxLen)
 }
 
 function resolveToolResultMaxChars(toolName: string): number {
