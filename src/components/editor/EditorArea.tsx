@@ -27,7 +27,7 @@ import { readingDocumentId, type ReadingMark, type ReadingMarkColor } from '@/se
 import { useReadingMarksStore } from '@/stores/readingMarksStore'
 import { CodeMirrorEditor } from './CodeMirrorEditor'
 import type { MarkdownDiffViewHandle } from './MarkdownDiffView'
-import { SearchOverlay } from './SearchOverlay'
+import { SearchOverlay, type SearchRequest } from './SearchOverlay'
 import { TabBar } from './TabBar'
 import { useScheduledPreviewContent } from './useScheduledPreviewContent'
 import { useEditorResourceLifecycle } from './useEditorResourceLifecycle'
@@ -198,7 +198,9 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     stableFrames: 0,
   })
   const [, setPreviewRestoreTick] = useState(0)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchRequest, setSearchRequest] = useState<SearchRequest | null>(null)
+  const searchRequestIdRef = useRef(0)
+  const searchOpen = searchRequest !== null
   const [rightPaneDragOver, setRightPaneDragOver] = useState(false)
   const [tocCollapsed, setTocCollapsed] = useState(false)
   const [activeEditorHeading, setActiveEditorHeading] = useState<string | null>(null)
@@ -610,21 +612,6 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     if (viewMode !== 'edit' && viewMode !== 'edit-preview') return
     restoreEditorReadingPosition(activeTab.id)
   }, [activeTab?.id, restoreEditorReadingPosition, viewMode])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.altKey) {
-        setSearchOpen(true)
-      }
-    }
-    const openSearch = () => setSearchOpen(true)
-    window.addEventListener('keydown', handler, true)
-    window.addEventListener(OPEN_EDITOR_SEARCH_EVENT, openSearch)
-    return () => {
-      window.removeEventListener('keydown', handler, true)
-      window.removeEventListener(OPEN_EDITOR_SEARCH_EVENT, openSearch)
-    }
-  }, [])
 
   const captureFontZoomAnchors = useCallback((targetFontSize: number) => {
     for (const frameId of fontZoomRestoreFramesRef.current) {
@@ -1438,8 +1425,67 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     }
   }, [setRightPaneTabId, viewMode, setViewMode])
 
-  const getSearchProps = () => {
-    if (viewMode === 'edit' || viewMode === 'edit-preview') return { editorViewRef }
+  const normalizeSearchQuery = (text: string) => text.trim().replace(/\s*\r?\n\s*/g, ' ')
+
+  const createSearchRequest = useCallback((includeSelection: boolean): SearchRequest => {
+    const requestId = ++searchRequestIdRef.current
+    const defaultTarget: SearchRequest['target'] = viewMode === 'edit' || viewMode === 'edit-preview' ? 'editor' : 'preview'
+    if (!includeSelection) return { requestId, target: defaultTarget, initialQuery: '' }
+
+    const getEditorSelection = (): SearchRequest | null => {
+      const view = editorViewRef.current
+      if (!view) return null
+      const selection = view.state.selection.main
+      if (selection.from === selection.to) return null
+      const initialQuery = normalizeSearchQuery(view.state.sliceDoc(selection.from, selection.to))
+      return initialQuery ? { requestId, target: 'editor', initialQuery, anchor: { offset: selection.from } } : null
+    }
+
+    const previewRefs = []
+    if (leftPreviewVisible) previewRefs.push(leftMarkdownPreviewRef)
+    if (viewMode === 'dual-preview') previewRefs.push(rightMarkdownPreviewRef)
+    if (defaultTarget === 'preview' || viewMode === 'edit-preview') {
+      for (let sourceIndex = 0; sourceIndex < previewRefs.length; sourceIndex += 1) {
+        const selection = previewRefs[sourceIndex].current?.getSelection() ?? null
+        if (!selection) continue
+        const initialQuery = normalizeSearchQuery(selection.text)
+        if (initialQuery) {
+          return { requestId, target: 'preview', initialQuery, anchor: { offset: selection.from, sourceIndex } }
+        }
+      }
+    }
+    if (defaultTarget === 'editor') {
+      return getEditorSelection() ?? { requestId, target: defaultTarget, initialQuery: '' }
+    }
+    return { requestId, target: defaultTarget, initialQuery: '' }
+  }, [editorViewRef, leftPreviewVisible, leftMarkdownPreviewRef, rightMarkdownPreviewRef, viewMode])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.altKey) {
+        e.preventDefault()
+        setSearchRequest(createSearchRequest(true))
+      }
+    }
+    const openSearch = () => setSearchRequest((current) => current ?? createSearchRequest(false))
+    window.addEventListener('keydown', handler, true)
+    window.addEventListener(OPEN_EDITOR_SEARCH_EVENT, openSearch)
+    return () => {
+      window.removeEventListener('keydown', handler, true)
+      window.removeEventListener(OPEN_EDITOR_SEARCH_EVENT, openSearch)
+    }
+  }, [createSearchRequest])
+
+  const getSearchProps = (request: SearchRequest | null) => {
+    const canUseEditor = viewMode === 'edit' || viewMode === 'edit-preview'
+    const canUsePreview = leftPreviewVisible
+    const defaultTarget: SearchRequest['target'] = canUseEditor ? 'editor' : 'preview'
+    const target = request?.target === 'editor' && canUseEditor
+      ? 'editor'
+      : request?.target === 'preview' && canUsePreview
+        ? 'preview'
+        : defaultTarget
+    if (target === 'editor') return { editorViewRef, searchRequest: request ?? undefined }
     const previewSources = []
     if (leftPreviewVisible && leftPreviewRef.current) {
       previewSources.push({
@@ -1455,7 +1501,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
         previewRef: rightMarkdownPreviewRef,
       })
     }
-    return { previewSources }
+    return { previewSources, searchRequest: request ?? undefined }
   }
 
   const handlePreviewFirstVisible = useCallback((documentId: string | null) => {
@@ -1730,7 +1776,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
         )}
 
         {searchOpen && tabs.length > 0 && (
-          <SearchOverlay onClose={() => setSearchOpen(false)} {...getSearchProps()} />
+          <SearchOverlay key={`${searchRequest?.requestId ?? 0}:${searchRequest?.target ?? ''}`} onClose={() => setSearchRequest(null)} {...getSearchProps(searchRequest)} />
         )}
         {previewMenu && (
           <ContextMenu position={previewMenu} onClose={closePreviewMenu} minWidth={176} maxWidth={176}>

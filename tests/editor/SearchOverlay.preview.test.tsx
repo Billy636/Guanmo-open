@@ -4,6 +4,30 @@ import { describe, expect, it, vi } from 'vitest'
 import { SearchOverlay } from '@/components/editor/SearchOverlay'
 
 describe('SearchOverlay 预览全文搜索', () => {
+  it('使用 Ctrl+F 请求的初始选区文本并定位到该选区匹配', () => {
+    const paneRef = createRef<HTMLDivElement>()
+    const scrollToOffset = vi.fn()
+    const previewRef = { current: { scrollToOffset } }
+    const content = '目标一\n\n目标二'
+
+    render(
+      <SearchOverlay
+        onClose={vi.fn()}
+        searchRequest={{
+          requestId: 1,
+          target: 'preview',
+          initialQuery: '目标二',
+          anchor: { offset: content.lastIndexOf('目标二'), sourceIndex: 0 },
+        }}
+        previewSources={[{ content, paneRef, previewRef }]}
+      />,
+    )
+
+    expect(screen.getByPlaceholderText('搜索...')).toHaveValue('目标二')
+    expect(screen.getByText('1/1')).toBeInTheDocument()
+    expect(scrollToOffset).toHaveBeenLastCalledWith(content.lastIndexOf('目标二'))
+  })
+
   it('统计未挂载内容并按匹配 offset 请求虚拟预览定位', () => {
     const paneRef = createRef<HTMLDivElement>()
     const scrollToOffset = vi.fn()
