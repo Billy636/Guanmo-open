@@ -15,6 +15,7 @@ import { ContextMenu, ContextMenuGroupTitle, ContextMenuItem, ContextMenuSeparat
 import { useFullscreen } from '@/hooks/useFullscreen'
 import { useFileRename } from '@/hooks/useFileRename'
 import { SettingSlider } from '@/components/common/SettingSlider'
+import { isPointerActivation, runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 
 type ViewMode = 'edit' | 'preview' | 'edit-preview' | 'dual-preview' | 'diff-preview'
 
@@ -428,7 +429,7 @@ export function FullscreenControlBar({
                 <BubbleButton
                   key={mode.key}
                   active={viewMode === mode.key}
-                  onClick={() => setViewMode(mode.key)}
+                  onClick={(event) => runDocumentSurfaceTransition(() => setViewMode(mode.key), { animate: isPointerActivation(event) && viewMode !== mode.key, kind: 'mode' })}
                   variant="text"
                 >
                   {mode.label}
@@ -486,7 +487,7 @@ export function FullscreenControlBar({
                     key={tab.id}
                     type="button"
                     data-active={active ? 'true' : 'false'}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={(event) => runDocumentSurfaceTransition(() => setActiveTab(tab.id), { animate: isPointerActivation(event) && activeTabId !== tab.id })}
                     onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
                     className={`group gm-fullscreen-tab-button flex h-9 max-w-[300px] flex-shrink-0 items-center gap-2 rounded-lg px-3 text-body font-semibold transition-colors ${
                       active
@@ -684,7 +685,7 @@ function BubbleButton({
 }: {
   children: React.ReactNode
   active?: boolean
-  onClick: () => void
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
   title?: string
   variant?: 'pill' | 'text'
   ariaExpanded?: boolean

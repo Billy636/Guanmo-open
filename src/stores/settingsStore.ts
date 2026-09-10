@@ -63,6 +63,7 @@ interface AppearanceSettings extends AppearanceConfigV1 {
   aiAvatarStyle: AiAvatarStyle
   aiAssistantFontSize: AiAssistantFontSize
   fullscreenTransitionEnabled: boolean
+  documentTransitionEnabled: boolean
   lastLightThemeId: NonDarkThemeId
 }
 
@@ -140,6 +141,7 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   aiAvatarStyle: 'sprite',
   aiAssistantFontSize: 14,
   fullscreenTransitionEnabled: true,
+  documentTransitionEnabled: true,
   lastLightThemeId: 'warm',
 }
 
@@ -514,6 +516,9 @@ export const useSettingsStore = create<SettingsState>()(
               fullscreenTransitionEnabled: typeof savedAppearance.fullscreenTransitionEnabled === 'boolean'
                 ? savedAppearance.fullscreenTransitionEnabled
                 : current.appearance.fullscreenTransitionEnabled,
+              documentTransitionEnabled: typeof savedAppearance.documentTransitionEnabled === 'boolean'
+                ? savedAppearance.documentTransitionEnabled
+                : current.appearance.documentTransitionEnabled,
               ...resolved,
               themeId,
               lastLightThemeId,

@@ -8,7 +8,7 @@ import { toast } from '@/services/toast'
 import { getRuntimeCapabilities } from '@/services/runtimeCapabilities'
 
 interface WorkspaceRootsProps {
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, animate?: boolean) => void
 }
 
 export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
