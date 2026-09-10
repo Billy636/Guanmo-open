@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileText, Filter } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -32,6 +32,7 @@ import { normalizeFilePath } from '@/services/pathIdentity'
 import { useAppStore } from '@/stores/appStore'
 import { useReadingArtifactsStore } from '@/stores/readingArtifactsStore'
 import { useReadingMarksStore } from '@/stores/readingMarksStore'
+import { MORPHING_MOTION_TOKENS } from '@/components/common/useMorphingMotion'
 
 type DocumentAvailability = 'checking' | 'available' | 'unavailable'
 type CenterView = 'recent' | 'documents' | 'detail' | 'focus'
@@ -60,6 +61,32 @@ const COLOR_STYLES: Record<ReadingMarkColor, string> = {
   green: 'bg-emerald-300',
   blue: 'bg-sky-300',
   pink: 'bg-pink-300',
+}
+
+const COLOR_RAIL_STYLES: Record<ReadingMarkColor, string> = {
+  yellow: 'bg-amber-400',
+  green: 'bg-emerald-400',
+  blue: 'bg-sky-400',
+  pink: 'bg-pink-400',
+}
+
+const COLOR_NOTE_STYLES: Record<ReadingMarkColor, CSSProperties> = {
+  yellow: {
+    borderColor: 'color-mix(in srgb, var(--gm-accent) 38%, var(--gm-border) 62%)',
+    backgroundColor: 'color-mix(in srgb, var(--gm-accent) 12%, var(--gm-surface-elevated) 88%)',
+  },
+  green: {
+    borderColor: 'color-mix(in srgb, var(--gm-primary) 38%, var(--gm-border) 62%)',
+    backgroundColor: 'color-mix(in srgb, var(--gm-primary) 10%, var(--gm-surface-elevated) 90%)',
+  },
+  blue: {
+    borderColor: 'color-mix(in srgb, #8fb7d8 38%, var(--gm-border) 62%)',
+    backgroundColor: 'color-mix(in srgb, #8fb7d8 10%, var(--gm-surface-elevated) 90%)',
+  },
+  pink: {
+    borderColor: 'color-mix(in srgb, #e98ab8 38%, var(--gm-border) 62%)',
+    backgroundColor: 'color-mix(in srgb, #e98ab8 10%, var(--gm-surface-elevated) 90%)',
+  },
 }
 
 function dateGroupLabel(timestamp: number): string {
@@ -776,9 +803,74 @@ function SortMenu({ value, onChange }: { value: 'source' | 'time'; onChange: (va
   )
 }
 
+function ExpandableText({
+  text,
+  lines,
+  expanded,
+  reducedMotion,
+  onOverflowChange,
+  className,
+}: {
+  text: string
+  lines: number
+  expanded: boolean
+  reducedMotion: boolean
+  onOverflowChange: (overflow: boolean) => void
+  className: string
+}) {
+  const textRef = useRef<HTMLDivElement>(null)
+  const [metrics, setMetrics] = useState({ fullHeight: 0, collapsedHeight: 0, overflow: false })
+  const measure = useCallback(() => {
+    const element = textRef.current
+    if (!element) return
+    const computed = window.getComputedStyle(element)
+    const fontSize = Number.parseFloat(computed.fontSize) || 14
+    const lineHeight = Number.parseFloat(computed.lineHeight) || fontSize * 1.5
+    const measuredHeight = Math.max(element.scrollHeight, element.getBoundingClientRect().height)
+    const fallbackHeight = text.split(/\r?\n/).length * lineHeight
+    const fullHeight = Math.max(measuredHeight, fallbackHeight)
+    const collapsedHeight = Math.min(fullHeight, lineHeight * lines)
+    const overflow = fullHeight > collapsedHeight + 1
+    setMetrics((current) => current.fullHeight === fullHeight && current.collapsedHeight === collapsedHeight && current.overflow === overflow
+      ? current
+      : { fullHeight, collapsedHeight, overflow })
+    onOverflowChange(overflow)
+  }, [lines, onOverflowChange, text])
+
+  useLayoutEffect(() => {
+    measure()
+    const element = textRef.current
+    if (!element || typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [measure])
+
+  const visibleHeight = expanded || !metrics.overflow ? 'auto' : metrics.collapsedHeight
+  return (
+    <motion.div
+      animate={{ height: visibleHeight }}
+      initial={false}
+      transition={reducedMotion ? { duration: 0 } : { height: MORPHING_MOTION_TOKENS.surface }}
+      className="relative overflow-hidden"
+    >
+      <div ref={textRef} className={className}>{text}</div>
+      {!expanded && metrics.overflow && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+          style={{ background: 'linear-gradient(to bottom, transparent, color-mix(in srgb, var(--gm-surface) 96%, #fff5e6 4%))' }}
+        />
+      )}
+    </motion.div>
+  )
+}
+
 function ArtifactCard({ item, availability, anchorStatus, currentDocument, reducedMotion, expanded, onToggleExpand, onNavigateMark, onUpdateMark, onDeleteMark, onDeleteAi, onOpenAiSource }: { item: ReadingArtifactItem; availability: Record<string, DocumentAvailability>; anchorStatus?: SourceAnchorStatus; currentDocument?: ReadingArtifactDocumentRef | null; reducedMotion: boolean; expanded: boolean; onToggleExpand?: () => void; onNavigateMark: () => void; onUpdateMark: (color?: ReadingMarkColor, note?: string) => Promise<unknown>; onDeleteMark: () => Promise<void>; onDeleteAi: () => Promise<void>; onOpenAiSource: (ref: ReadingArtifactDocumentRef) => void | Promise<void> }) {
   const [editing, setEditing] = useState(false)
   const [note, setNote] = useState(item.content ?? '')
+  const [contentOverflow, setContentOverflow] = useState<Record<string, boolean>>({})
+  const [manualExpanded, setManualExpanded] = useState(false)
   const isUser = item.source === 'user'
   const refs = currentDocument ? [currentDocument] : item.documentRefs
   const webReferences = item.references?.filter((reference) => reference.kind === 'web') ?? []
@@ -791,19 +883,32 @@ function ArtifactCard({ item, availability, anchorStatus, currentDocument, reduc
   }
   const contentId = `reading-artifact-${item.id}`
   const triggerId = `${contentId}-trigger`
+  const color = item.color ?? 'yellow'
+  const canExpand = Object.values(contentOverflow).some(Boolean)
+  const contentExpanded = isUser ? manualExpanded : expanded
+  const updateContentOverflow = useCallback((key: string, overflow: boolean) => {
+    setContentOverflow((current) => current[key] === overflow ? current : { ...current, [key]: overflow })
+  }, [])
+  useEffect(() => {
+    setContentOverflow({})
+    setManualExpanded(false)
+    setEditing(false)
+    setNote(item.content ?? '')
+  }, [item.content, item.id])
   const contentMotion = reducedMotion
     ? { initial: { opacity: 1, height: 'auto' }, animate: { opacity: 1, height: 'auto' }, exit: { opacity: 1, height: 0 }, transition: { duration: 0 } }
     : { initial: { opacity: 0, height: 0 }, animate: { opacity: 1, height: 'auto' }, exit: { opacity: 0, height: 0 }, transition: { height: { duration: 0.24, ease: 'easeOut' as const }, opacity: { duration: 0.16, ease: 'easeOut' as const } } }
-  return <article data-state={isUser ? undefined : expanded ? 'open' : 'closed'} className="overflow-hidden rounded-xl border border-gm-border-subtle bg-gm-surface shadow-sm">
+  return <article data-state={isUser ? undefined : expanded ? 'open' : 'closed'} className="overflow-hidden rounded-2xl border border-gm-border-subtle bg-gm-surface shadow-[0_7px_20px_rgba(72,58,42,0.08)]" style={isUser ? { backgroundColor: 'color-mix(in srgb, var(--gm-surface) 96%, #fff5e6 4%)', borderColor: 'color-mix(in srgb, var(--gm-border-subtle) 76%, #d7b98c 24%)' } : undefined}>
     {isUser ? (
-      <div className="p-3">
-        <div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${item.color ? COLOR_STYLES[item.color] : 'bg-gm-primary/50'}`} /><span className="text-micro font-bold text-gm-text-secondary">{TYPE_LABELS[item.type]}</span><span className="ml-auto text-micro text-gm-text-tertiary">{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span></div>
-        {(item.quote || editing || item.content) && <div className="mt-2 max-h-64 overflow-y-auto pr-1">
-          {item.quote && <blockquote className="border-l-2 border-gm-border pl-2 text-caption leading-relaxed text-gm-text-secondary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>“{item.quote}”</blockquote>}
-          {editing ? <div className={item.quote ? 'mt-2' : ''}><textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-20 w-full rounded-lg border border-gm-border bg-gm-canvas p-2 text-caption outline-none focus:border-gm-primary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }} /><div className="mt-1 flex justify-end gap-2"><button type="button" onClick={() => { setNote(item.content ?? ''); setEditing(false) }} className="text-micro text-gm-text-tertiary">取消</button><button type="button" onClick={() => void onUpdateMark(undefined, note).then(() => setEditing(false))} className="text-micro font-bold text-gm-primary">保存</button></div></div> : item.content && <p className={item.quote ? 'mt-2 whitespace-pre-wrap text-caption leading-relaxed text-gm-text' : 'whitespace-pre-wrap text-caption leading-relaxed text-gm-text'} style={{ fontSize: 'var(--gm-ai-chat-font-size)' }}>{item.content}</p>}
+      <div className="p-3.5 sm:p-4">
+        <div className="flex items-center gap-2 border-b border-gm-border-subtle/80 pb-2.5"><span className={`h-2.5 w-2.5 rounded-full ${COLOR_STYLES[color]}`} /><span className="text-caption font-bold text-gm-text-secondary">{TYPE_LABELS[item.type]}</span><span className="ml-auto text-micro text-gm-text-tertiary">{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span></div>
+        {(item.quote || editing || item.content) && <div id={contentId} className="mt-3 space-y-3">
+          {item.quote && <div className="relative pl-3.5"><span className={`absolute inset-y-1 left-0 w-1 rounded-full ${COLOR_RAIL_STYLES[color]}`} /><ExpandableText text={`“${item.quote}”`} lines={item.type === 'annotation' ? 3 : 6} expanded={contentExpanded || editing} reducedMotion={reducedMotion} onOverflowChange={(value) => updateContentOverflow('quote', value)} className="whitespace-pre-wrap break-words font-serif text-body leading-[1.65] text-gm-text" /></div>}
+          {item.type === 'annotation' && <section className="rounded-xl border px-3 py-2.5" style={COLOR_NOTE_STYLES[color]}><h4 className="mb-1.5 text-micro font-bold tracking-wide text-gm-primary">我的批注</h4>{editing ? <div><textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-24 w-full resize-y rounded-lg border border-gm-border-subtle bg-gm-canvas/65 p-2.5 text-caption leading-relaxed text-gm-text outline-none focus:border-gm-primary" style={{ fontSize: 'var(--gm-ai-chat-font-size)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => { setNote(item.content ?? ''); setEditing(false) }} className="rounded-md px-2 py-1 text-micro text-gm-text-tertiary hover:bg-gm-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40">取消</button><button type="button" onClick={() => void onUpdateMark(undefined, note).then(() => setEditing(false))} className="rounded-md px-2 py-1 text-micro font-bold text-gm-primary hover:bg-gm-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40">保存</button></div></div> : item.content && <ExpandableText text={item.content} lines={5} expanded={contentExpanded} reducedMotion={reducedMotion} onOverflowChange={(value) => updateContentOverflow('note', value)} className="whitespace-pre-wrap break-words text-caption leading-[1.65] text-gm-text" />}</section>}
         </div>}
-        {refs.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{refs.map((ref) => <button key={ref.documentId} type="button" disabled={!ref.filePath || availability[ref.documentId] === 'unavailable'} onClick={onNavigateMark} className="rounded-md border border-gm-border-subtle px-2 py-1 text-micro text-gm-text-secondary hover:text-gm-primary disabled:cursor-not-allowed disabled:text-gm-warning">{availability[ref.documentId] === 'unavailable' ? `${ref.fileName} · 来源文档不可用` : `${ref.fileName} · 查看原文`}</button>)}</div>}
-        <div className="mt-2 flex items-center gap-2 border-t border-gm-border-subtle pt-2">{(['yellow', 'green', 'blue', 'pink'] as const).map((color) => <button key={color} type="button" aria-label={`改为${color}`} onClick={() => void onUpdateMark(color)} className={`h-4 w-4 rounded-full ${COLOR_STYLES[color]} ${item.color === color ? 'ring-2 ring-gm-primary ring-offset-1' : ''}`} />)}{item.type === 'annotation' && <button type="button" onClick={() => setEditing(true)} className="ml-1 text-micro text-gm-primary">编辑批注</button>}<button type="button" onClick={remove} className="ml-auto text-micro text-gm-error">删除</button></div>
+        {canExpand && !editing && <button type="button" aria-expanded={contentExpanded} aria-controls={contentId} onClick={() => { if (isUser) setManualExpanded((value) => !value); else onToggleExpand?.() }} className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-micro font-bold text-gm-primary outline-none transition-colors hover:bg-gm-primary/5 focus-visible:ring-1 focus-visible:ring-gm-primary/40 active:scale-[0.98]"><span>{contentExpanded ? '收起' : '展开全文'}</span><ChevronDown size={14} strokeWidth={1.8} className={`transition-transform duration-200 ${contentExpanded ? 'rotate-180' : ''}`} aria-hidden="true" /></button>}
+        {refs.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{refs.map((ref) => <button key={ref.documentId} type="button" disabled={!ref.filePath || availability[ref.documentId] === 'unavailable'} onClick={onNavigateMark} className="flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-gm-border-subtle/80 bg-gm-canvas/45 px-2.5 py-2 text-left text-micro text-gm-text-secondary transition-colors hover:border-gm-primary/35 hover:text-gm-primary disabled:cursor-not-allowed disabled:text-gm-warning"><FileText size={15} strokeWidth={1.7} aria-hidden="true" /><span className="truncate">{availability[ref.documentId] === 'unavailable' ? `${ref.fileName} · 来源文档不可用` : `${ref.fileName} · 查看原文`}</span><ChevronRight size={14} strokeWidth={1.8} className="ml-auto shrink-0 text-gm-text-tertiary" aria-hidden="true" /></button>)}</div>}
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gm-border-subtle/80 pt-3">{(['yellow', 'green', 'blue', 'pink'] as const).map((nextColor) => <button key={nextColor} type="button" aria-label={`改为${nextColor}`} onClick={() => void onUpdateMark(nextColor)} className={`h-4 w-4 rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-gm-primary/50 focus-visible:ring-offset-2 ${COLOR_STYLES[nextColor]} ${color === nextColor ? 'ring-2 ring-gm-primary ring-offset-1' : ''}`} />)}{item.type === 'annotation' && <button type="button" onClick={() => setEditing(true)} className="ml-1 rounded-md px-2 py-1 text-micro font-bold text-gm-primary hover:bg-gm-primary/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40">编辑批注</button>}<button type="button" onClick={remove} className="ml-auto rounded-md px-2 py-1 text-micro text-gm-text-tertiary hover:bg-gm-error/10 hover:text-gm-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-error/40">删除</button></div>
       </div>
     ) : (
       <>

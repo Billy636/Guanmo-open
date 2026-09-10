@@ -199,6 +199,90 @@ describe('ReadingArtifactCenter', () => {
     expect(mocks.navigateToReadingMark).toHaveBeenCalledWith('mark-1')
   })
 
+  it('keeps short manual content directly readable without an expand control', async () => {
+    mocks.loadReadingArtifactsPage.mockReset().mockResolvedValue({ artifacts: [], total: 0 })
+    render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
+
+    const card = (await screen.findByText('人工批注')).closest('article')
+    expect(card).toBeInTheDocument()
+    expect(card).toHaveTextContent('“匿名原文”')
+    expect(within(card!).getByText('人工批注')).toBeInTheDocument()
+    expect(within(card!).queryByRole('button', { name: '展开全文' })).not.toBeInTheDocument()
+  })
+
+  it('uses theme-safe annotation surfaces in dark mode', async () => {
+    const root = document.documentElement
+    root.dataset.theme = 'dark'
+    try {
+      mocks.loadReadingArtifactsPage.mockReset().mockResolvedValue({ artifacts: [], total: 0 })
+      render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
+
+      const card = (await screen.findByText('人工批注')).closest('article')
+      const noteSection = within(card!).getByText('我的批注').closest('section')
+      expect(noteSection).toBeInTheDocument()
+      expect(noteSection).toHaveAttribute('style', expect.stringContaining('background-color: color-mix'))
+      expect(noteSection).not.toHaveClass('bg-pink-50/65')
+    } finally {
+      delete root.dataset.theme
+    }
+  })
+
+  it('clamps long highlight and annotation content while keeping source and actions visible', async () => {
+    const longHighlight: ReadingMark = {
+      ...readingMark,
+      id: 'mark-long-highlight',
+      type: 'highlight',
+      note: undefined,
+      anchor: { ...readingMark.anchor, quote: Array.from({ length: 8 }, (_, index) => `高亮原文第${index + 1}行`).join('\n') },
+    }
+    const longAnnotation: ReadingMark = {
+      ...readingMark,
+      id: 'mark-long-annotation',
+      anchor: { ...readingMark.anchor, quote: Array.from({ length: 5 }, (_, index) => `批注原文第${index + 1}行`).join('\n') },
+      note: Array.from({ length: 7 }, (_, index) => `我的批注第${index + 1}行`).join('\n'),
+    }
+    mocks.loadReadingMarksPage.mockReset().mockResolvedValueOnce([longHighlight, longAnnotation])
+    mocks.loadReadingArtifactsPage.mockReset().mockResolvedValue({ artifacts: [], total: 0 })
+    render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
+
+    await screen.findAllByRole('button', { name: '展开全文' })
+    const cards = screen.getAllByRole('article')
+    const highlightCard = cards.find((card) => card.textContent?.includes('高亮原文第1行'))
+    const annotationCard = cards.find((card) => card.textContent?.includes('批注原文第1行'))
+    expect(highlightCard).toBeDefined()
+    expect(annotationCard).toBeDefined()
+    const annotationExpand = within(annotationCard!).getByRole('button', { name: '展开全文' })
+    expect(highlightCard).toHaveTextContent('高亮原文第8行')
+    expect(within(highlightCard!).getByRole('button', { name: 'A.md · 查看原文' })).toBeInTheDocument()
+    expect(within(highlightCard!).getByRole('button', { name: '删除' })).toBeInTheDocument()
+
+    fireEvent.click(annotationExpand)
+    expect(screen.getAllByRole('button', { name: '收起' })).toHaveLength(1)
+    expect(annotationCard).toHaveTextContent('我的批注第7行')
+    expect(within(annotationCard!).getByText('我的批注')).toBeInTheDocument()
+    expect(within(annotationCard!).getByRole('button', { name: '编辑批注' })).toBeInTheDocument()
+  })
+
+  it('cleans up content resize observers when a manual card unmounts', async () => {
+    const originalResizeObserver = globalThis.ResizeObserver
+    const disconnect = vi.fn()
+    class TrackingResizeObserver {
+      constructor(_callback: ResizeObserverCallback) {}
+      observe = vi.fn()
+      disconnect = disconnect
+    }
+    globalThis.ResizeObserver = TrackingResizeObserver as unknown as typeof ResizeObserver
+    try {
+      mocks.loadReadingArtifactsPage.mockReset().mockResolvedValue({ artifacts: [], total: 0 })
+      const view = render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
+      await screen.findByText('人工批注')
+      view.unmount()
+      expect(disconnect).toHaveBeenCalled()
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
+  })
+
   it('keeps each multi-document AI source as an independent source action', async () => {
     const onOpenAiSource = vi.fn()
     mocks.fileExists.mockResolvedValue(true)
