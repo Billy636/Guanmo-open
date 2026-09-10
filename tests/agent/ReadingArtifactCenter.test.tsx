@@ -135,6 +135,9 @@ describe('ReadingArtifactCenter', () => {
 
     expect(await screen.findByText('独立问题集')).toBeInTheDocument()
     expect(screen.getByText('AI · AI 解读')).toBeInTheDocument()
+    const cards = screen.getAllByRole('article')
+    expect(cards.findIndex((card) => card.textContent?.includes('AI · AI 解读')))
+      .toBeLessThan(cards.findIndex((card) => card.textContent?.includes('人工批注')))
     fireEvent.click(screen.getByRole('tab', { name: '按文档' }))
 
     expect(await screen.findByText('A.md')).toBeInTheDocument()
@@ -170,7 +173,7 @@ describe('ReadingArtifactCenter', () => {
     fireEvent.click(sortButton)
     fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('menu', { name: '排序方式' })).not.toBeInTheDocument()
-    const manualCard = screen.getByText('人工批注').closest('article')
+    const manualCard = screen.getAllByText('人工批注')[0].closest('article')
     fireEvent.click(within(manualCard!).getByRole('button', { name: 'A.md · 查看原文' }))
     expect(mocks.navigateToReadingMark).toHaveBeenCalledWith('mark-1')
   })

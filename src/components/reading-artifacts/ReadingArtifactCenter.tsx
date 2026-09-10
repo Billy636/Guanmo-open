@@ -19,6 +19,7 @@ import { toast } from '@/services/toast'
 import {
   buildReadingArtifactItems,
   filterReadingArtifactItems,
+  listRecentArtifacts,
   listArtifactDocuments,
   listArtifactsByDocument,
   type ReadingArtifactDocumentRef,
@@ -69,12 +70,6 @@ function dateGroupLabel(timestamp: number): string {
   if (startValue === startToday) return '今天'
   if (startValue === startToday - 86_400_000) return '昨天'
   return value.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
-}
-
-function sourceGroupLabel(item: ReadingArtifactItem): string {
-  return item.documentRefs.length > 0
-    ? item.documentRefs.map((ref) => ref.fileName).join(' + ')
-    : '独立成果'
 }
 
 function documentFileName(fileName: string, filePath: string): string {
@@ -159,16 +154,23 @@ export function ReadingArtifactCenter({
   const [selectedDocument, setSelectedDocument] = useState<ReadingArtifactDocumentRef | null | undefined>(undefined)
   const [detailFilter, setDetailFilter] = useState<DetailFilter>('all')
   const [detailSort, setDetailSort] = useState<'source' | 'time'>('source')
+  const [detailContent, setDetailContent] = useState<{
+    items: ReadingArtifactItem[]
+    filter: DetailFilter
+    sort: 'source' | 'time'
+    pending: boolean
+    version: number
+  }>({ items: [], filter: 'all', sort: 'source', pending: false, version: 0 })
   const [availability, setAvailability] = useState<Record<string, DocumentAvailability>>({})
   const [documentModel, setDocumentModel] = useState<MarkdownPreviewModel | null>(null)
   const [loadedItems, setLoadedItems] = useState<ReadingArtifactItem[]>([])
   const [loadedAiArtifacts, setLoadedAiArtifacts] = useState<ReadingArtifact[]>([])
   const [itemsTotal, setItemsTotal] = useState(0)
-  const [itemsLoading, setItemsLoading] = useState(false)
+  const [itemsLoading, setItemsLoading] = useState(true)
   const [itemsLoadingMore, setItemsLoadingMore] = useState(false)
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [documentPage, setDocumentPage] = useState<ReadingArtifactDocumentPage>({ documents: [], total: 0, hasMore: false })
-  const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [documentsLoading, setDocumentsLoading] = useState(true)
   const loadedItemsRef = useRef<ReadingArtifactItem[]>([])
   const loadedAiArtifactsRef = useRef<ReadingArtifact[]>([])
   const documentPageRef = useRef<ReadingArtifactDocumentPage>({ documents: [], total: 0, hasMore: false })
@@ -211,6 +213,7 @@ export function ReadingArtifactCenter({
     if (append) setItemsLoadingMore(true)
     else setItemsLoading(true)
     setItemsError(null)
+    let detailSnapshot: ReadingArtifactItem[] | null = null
     try {
       const result = await loadReadingArtifactCenterItemsPage({ ...queryOptions, offset })
       if (requestId !== requestSequenceRef.current) return
@@ -231,6 +234,7 @@ export function ReadingArtifactCenter({
       setLoadedAiArtifacts(nextArtifacts)
       loadedItemsRef.current = combined
       setLoadedItems(combined)
+      if (view === 'detail') detailSnapshot = combined
       setItemsTotal(result.total)
     } catch (error) {
       if (requestId === requestSequenceRef.current) setItemsError(error instanceof Error ? error.message : String(error))
@@ -238,9 +242,16 @@ export function ReadingArtifactCenter({
       if (requestId === requestSequenceRef.current) {
         setItemsLoading(false)
         setItemsLoadingMore(false)
+        if (view === 'detail') {
+          setDetailContent((current) => ({
+            ...current,
+            ...(detailSnapshot ? { items: detailSnapshot } : {}),
+            ...(append ? {} : { filter: detailFilter, sort: detailSort, pending: false, version: current.version + 1 }),
+          }))
+        }
       }
     }
-  }, [activeTypes, query, queryOptions, selectedDocument, view, workspaceRoots])
+  }, [activeTypes, detailFilter, detailSort, query, queryOptions, selectedDocument, view, workspaceRoots])
 
   useEffect(() => {
     if (view === 'documents' || view === 'focus') {
@@ -248,11 +259,6 @@ export function ReadingArtifactCenter({
       return
     }
     if (view !== 'detail' || isDatabaseReady()) {
-      loadedItemsRef.current = []
-      loadedAiArtifactsRef.current = []
-      setLoadedItems([])
-      setLoadedAiArtifacts([])
-      setItemsTotal(0)
       void loadItems(false)
     }
   }, [loadItems, view])
@@ -335,7 +341,7 @@ export function ReadingArtifactCenter({
 
   const aiById = useMemo(() => new Map(loadedAiArtifacts.map((artifact) => [artifact.id, artifact])), [loadedAiArtifacts])
   const items = loadedItems
-  const recentItems = items
+  const recentItems = useMemo(() => listRecentArtifacts(items), [items])
   const documentSummaries = useMemo(() => documentPage.documents.map((summary) => ({
       documentRef: summary.documentId === '__independent__' ? null : {
         documentId: documentIdForSummary(summary),
@@ -358,10 +364,10 @@ export function ReadingArtifactCenter({
     let cancelled = false
     for (const ref of refs.values()) {
       if (!ref.filePath) {
-        setAvailability((current) => ({ ...current, [ref.documentId]: 'unavailable' }))
+        setAvailability((current) => current[ref.documentId] ? current : { ...current, [ref.documentId]: 'unavailable' })
         continue
       }
-      setAvailability((current) => ({ ...current, [ref.documentId]: 'checking' }))
+      setAvailability((current) => current[ref.documentId] ? current : { ...current, [ref.documentId]: 'checking' })
       void fileExists(ref.filePath)
         .then((exists) => {
           if (!cancelled) setAvailability((current) => ({ ...current, [ref.documentId]: exists ? 'available' : 'unavailable' }))
@@ -373,19 +379,20 @@ export function ReadingArtifactCenter({
     return () => { cancelled = true }
   }, [items])
 
+  const selectedDocumentAvailability = selectedDocument ? availability[selectedDocument.documentId] : undefined
   useEffect(() => {
     let cancelled = false
     setDocumentModel(null)
-    if (view !== 'detail' || !selectedDocument?.filePath || availability[selectedDocument.documentId] !== 'available') return
+    if (view !== 'detail' || !selectedDocument?.filePath || selectedDocumentAvailability !== 'available') return
     void readRememberedMarkdownFileForOpen(selectedDocument.filePath)
       .then((content) => {
         if (!cancelled) setDocumentModel(createMarkdownPreviewModel(content))
       })
       .catch(() => {
         if (!cancelled) setAvailability((current) => ({ ...current, [selectedDocument.documentId]: 'unavailable' }))
-      })
+    })
     return () => { cancelled = true }
-  }, [availability, selectedDocument, view])
+  }, [selectedDocument?.documentId, selectedDocument?.filePath, selectedDocumentAvailability, view])
 
   useEffect(() => {
     setExpandedAiKey((current) => current && items.some((item) => item.key === current) ? current : null)
@@ -409,6 +416,24 @@ export function ReadingArtifactCenter({
     if (next === view) return
     const scroller = rootRef.current?.parentElement
     if (scroller) scrollPositionsRef.current[view] = scroller.scrollTop
+    requestSequenceRef.current += 1
+    const resetItems = next !== 'documents' && (next !== 'detail' || isDatabaseReady())
+    if (resetItems) {
+      loadedItemsRef.current = []
+      loadedAiArtifactsRef.current = []
+      setLoadedItems([])
+      setLoadedAiArtifacts([])
+      setItemsTotal(0)
+      setItemsLoading(true)
+    }
+    setDetailContent((current) => ({ ...current, pending: next === 'detail' && isDatabaseReady() }))
+    if (next === 'documents') {
+      documentRequestSequenceRef.current += 1
+      const emptyPage = { documents: [], total: 0, hasMore: false }
+      documentPageRef.current = emptyPage
+      setDocumentPage(emptyPage)
+      setDocumentsLoading(true)
+    }
     setExpandedAiKey(null)
     setView(next)
   }
@@ -417,8 +442,39 @@ export function ReadingArtifactCenter({
     returnFocusRef.current = origin ?? null
     setSelectedDocument(documentRef)
     setDetailFilter('all')
-    setDetailSort(documentRef ? 'source' : 'time')
+    const nextSort = documentRef ? 'source' : 'time'
+    setDetailSort(nextSort)
+    const databaseReady = isDatabaseReady()
+    setDetailContent((current) => ({
+      ...current,
+      items: databaseReady ? current.items : items,
+      filter: 'all',
+      sort: nextSort,
+      version: databaseReady ? current.version : current.version + 1,
+    }))
     changeView('detail')
+  }
+
+  const changeDetailFilter = (next: DetailFilter) => {
+    if (next === detailFilter) return
+    setDetailFilter(next)
+    const databaseReady = isDatabaseReady()
+    if (!databaseReady) {
+      setDetailContent((current) => ({ ...current, items, filter: next, pending: false, version: current.version + 1 }))
+      return
+    }
+    setDetailContent((current) => ({ ...current, pending: true }))
+  }
+
+  const changeDetailSort = (next: 'source' | 'time') => {
+    if (next === detailSort) return
+    setDetailSort(next)
+    const databaseReady = isDatabaseReady()
+    if (!databaseReady) {
+      setDetailContent((current) => ({ ...current, items, sort: next, pending: false, version: current.version + 1 }))
+      return
+    }
+    setDetailContent((current) => ({ ...current, pending: true }))
   }
 
   const toggleType = (type: ReadingArtifactItemType) => {
@@ -444,9 +500,9 @@ export function ReadingArtifactCenter({
       toast.error(describeFileOperationError(error, '定位批注失败'))
     }
   }
-  const detailItems = useMemo(() => items.filter((item) => matchesDetailFilter(item, detailFilter)), [detailFilter, items])
+  const detailItems = useMemo(() => detailContent.items.filter((item) => matchesDetailFilter(item, detailContent.filter)), [detailContent])
   const positionedDetail = useMemo(() => {
-    if (!selectedDocument || detailSort !== 'source' || !documentModel) return { positioned: [], other: detailItems }
+    if (!selectedDocument || detailContent.sort !== 'source' || !documentModel) return { positioned: [], other: detailItems }
     const positioned: Array<{ item: ReadingArtifactItem; position: number }> = []
     const other: ReadingArtifactItem[] = []
     for (const item of detailItems) {
@@ -456,7 +512,7 @@ export function ReadingArtifactCenter({
     }
     positioned.sort((left, right) => left.position - right.position || left.item.createdAt - right.item.createdAt)
     return { positioned: positioned.map((entry) => entry.item), other }
-  }, [detailItems, detailSort, documentModel, selectedDocument])
+  }, [detailContent.sort, detailItems, documentModel, selectedDocument])
 
   const renderCard = (item: ReadingArtifactItem, currentDocument?: ReadingArtifactDocumentRef | null) => (
     <ArtifactCard
@@ -548,22 +604,19 @@ export function ReadingArtifactCenter({
           ) : view === 'focus' ? (
             items.length > 0 ? <div className="space-y-2">{items.map((item) => renderCard(item))}</div> : <EmptyState text={focusError || '该阅读成果不存在'} />
           ) : (
-            <motion.div
-              initial={reducedMotion ? false : { opacity: 0, transform: 'translateX(6px)' }}
-              animate={{ opacity: 1, transform: 'translateX(0)' }}
-              transition={reducedMotion ? { duration: 0 } : { duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
-            >
-              <DetailView
-                independent={!selectedDocument}
-                filter={detailFilter}
-                sort={detailSort}
-                onFilter={setDetailFilter}
-                onSort={setDetailSort}
-                positioned={detailSort === 'time' ? [...detailItems].sort((a, b) => a.createdAt - b.createdAt) : positionedDetail.positioned}
-                other={detailSort === 'source' ? positionedDetail.other : []}
-                renderCard={(item) => renderCard(item, selectedDocument)}
-              />
-            </motion.div>
+            <DetailView
+              independent={!selectedDocument}
+              filter={detailFilter}
+              sort={detailSort}
+              onFilter={changeDetailFilter}
+              onSort={changeDetailSort}
+              reducedMotion={reducedMotion}
+              contentPending={detailContent.pending}
+              contentVersion={detailContent.version}
+              positioned={detailContent.sort === 'time' ? [...detailItems].sort((a, b) => a.createdAt - b.createdAt) : positionedDetail.positioned}
+              other={detailContent.sort === 'source' ? positionedDetail.other : []}
+              renderCard={(item) => renderCard(item, selectedDocument)}
+            />
           )}
           {itemsError && (
             <div className="mt-3 flex items-center justify-center gap-2 text-micro text-gm-error">
@@ -599,15 +652,12 @@ function FilterCheck({ type, checked, onToggle }: { type: ReadingArtifactItemTyp
 
 function RecentView({ items, renderCard }: { items: ReadingArtifactItem[]; renderCard: (item: ReadingArtifactItem) => React.ReactNode }) {
   if (items.length === 0) return <EmptyState text="当前条件下没有阅读成果" />
-  const dates = new Map<string, Map<string, ReadingArtifactItem[]>>()
+  const dates = new Map<string, ReadingArtifactItem[]>()
   for (const item of items) {
     const date = dateGroupLabel(item.createdAt)
-    const source = sourceGroupLabel(item)
-    const sources = dates.get(date) ?? new Map<string, ReadingArtifactItem[]>()
-    sources.set(source, [...(sources.get(source) ?? []), item])
-    dates.set(date, sources)
+    dates.set(date, [...(dates.get(date) ?? []), item])
   }
-  return <div className="space-y-6">{[...dates].map(([date, sources]) => <section key={date}><h3 className="mb-2 text-caption font-bold text-gm-text-secondary">{date}</h3><div className="space-y-4">{[...sources].map(([source, grouped]) => <div key={source}><div className="mb-1.5 truncate text-micro font-bold text-gm-text-tertiary">{source}</div><div className="space-y-2">{grouped.map((item) => renderCard(item))}</div></div>)}</div></section>)}</div>
+  return <div className="space-y-6">{[...dates].map(([date, grouped]) => <section key={date}><h3 className="mb-2 text-caption font-bold text-gm-text-secondary">{date}</h3><div className="space-y-2">{grouped.map((item) => renderCard(item))}</div></section>)}</div>
 }
 
 function DocumentView({ summaries, availability, onOpen }: { summaries: ReturnType<typeof listArtifactDocuments>; availability: Record<string, DocumentAvailability>; onOpen: (ref: ReadingArtifactDocumentRef | null, origin?: HTMLButtonElement) => void }) {
@@ -618,7 +668,7 @@ function DocumentView({ summaries, availability, onOpen }: { summaries: ReturnTy
   })}</div>
 }
 
-function DetailView({ independent, filter, sort, onFilter, onSort, positioned, other, renderCard }: { independent: boolean; filter: DetailFilter; sort: 'source' | 'time'; onFilter: (value: DetailFilter) => void; onSort: (value: 'source' | 'time') => void; positioned: ReadingArtifactItem[]; other: ReadingArtifactItem[]; renderCard: (item: ReadingArtifactItem) => React.ReactNode }) {
+function DetailView({ independent, filter, sort, onFilter, onSort, reducedMotion, contentPending, contentVersion, positioned, other, renderCard }: { independent: boolean; filter: DetailFilter; sort: 'source' | 'time'; onFilter: (value: DetailFilter) => void; onSort: (value: 'source' | 'time') => void; reducedMotion: boolean; contentPending: boolean; contentVersion: number; positioned: ReadingArtifactItem[]; other: ReadingArtifactItem[]; renderCard: (item: ReadingArtifactItem) => React.ReactNode }) {
   return <>
     <div className="mb-3 flex min-h-8 flex-wrap items-start gap-2">
       <nav aria-label="成果分类" role="tablist" className="flex min-w-0 flex-[1_1_12rem] flex-wrap items-center gap-1">
@@ -629,17 +679,31 @@ function DetailView({ independent, filter, sort, onFilter, onSort, positioned, o
             role="tab"
             aria-selected={filter === value}
             onClick={() => onFilter(value)}
-            className={`h-8 shrink-0 rounded-md border px-2.5 text-micro font-bold outline-none transition-colors focus-visible:border-gm-primary ${filter === value ? 'border-gm-primary bg-gm-primary-subtle text-gm-primary' : 'border-transparent text-gm-text-secondary hover:border-gm-border-subtle hover:bg-gm-surface'}`}
+            className={`relative h-8 shrink-0 rounded-md border border-transparent px-2.5 text-micro font-bold outline-none transition-colors focus-visible:border-gm-primary ${filter === value ? 'text-gm-primary' : 'text-gm-text-secondary hover:border-gm-border-subtle hover:bg-gm-surface'}`}
           >
             {({ all: '全部', highlight: '高亮', annotation: '批注', ai: 'AI 成果' })[value]}
+            {filter === value && <motion.span layoutId="reading-artifact-detail-filter-indicator" transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }} className="pointer-events-none absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gm-primary" aria-hidden="true" />}
           </button>
         ))}
       </nav>
       {!independent && <SortMenu value={sort} onChange={onSort} />}
     </div>
-    <div className="space-y-2">{positioned.map(renderCard)}</div>
-    {other.length > 0 && <section className="mt-5 pt-1"><h3 className="mb-2 text-micro font-bold tracking-wide text-gm-text-tertiary">其他成果</h3><div className="space-y-2">{other.map(renderCard)}</div></section>}
-    {positioned.length === 0 && other.length === 0 && <EmptyState text="当前条件下没有阅读成果" />}
+    <div aria-busy={contentPending} className="grid">
+      <AnimatePresence initial={false} mode="sync">
+        <motion.div
+          key={contentVersion}
+          initial={contentVersion === 0 || reducedMotion ? false : { opacity: 0 }}
+          animate={{ opacity: contentPending ? 0.55 : 1 }}
+          exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+          className="col-start-1 row-start-1 min-w-0"
+        >
+          <div className="space-y-2">{positioned.map(renderCard)}</div>
+          {other.length > 0 && <section className="mt-5 pt-1"><h3 className="mb-2 text-micro font-bold tracking-wide text-gm-text-tertiary">其他成果</h3><div className="space-y-2">{other.map(renderCard)}</div></section>}
+          {positioned.length === 0 && other.length === 0 && <EmptyState text="当前条件下没有阅读成果" />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   </>
 }
 
