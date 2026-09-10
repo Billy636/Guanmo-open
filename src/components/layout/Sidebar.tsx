@@ -20,7 +20,6 @@ import { readRememberedFile } from '@/services/persistedFileAccess'
 import { readMarkdownFileForOpen, readRememberedMarkdownFileForOpen } from '@/services/markdownFileOpenPolicy'
 import { TruncatedText } from '@/components/common/Tooltip'
 import { useFileRename } from '@/hooks/useFileRename'
-import { runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 
 interface SidebarProps {
   collapsed: boolean
@@ -45,17 +44,16 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
     return { name, path }
   })
 
-  const handleOpenFile = useCallback(async (event?: React.MouseEvent) => {
-    const animate = event?.detail !== 0
+  const handleOpenFile = useCallback(async () => {
     try {
       const file = await openFile()
       if (file) {
         const state = useEditorStore.getState()
         const existing = state.tabs.find((t) => isSameFilePath(t.filePath, file.path))
         if (existing) {
-          runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+          state.setActiveTab(existing.id)
         } else {
-          runDocumentSurfaceTransition(() => state.addTab(file.path, file.name, file.content), { animate })
+          state.addTab(file.path, file.name, file.content)
         }
         scheduleMarkdownDocumentIndex(file.path, file.name, file.content)
       }
@@ -82,18 +80,18 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
     }
   }, [addWorkspaceRoot])
 
-  const handleOpenFileFromTree = useCallback(async (path: string, animate = true) => {
+  const handleOpenFileFromTree = useCallback(async (path: string) => {
       try {
         if (!isWorkspaceDisplayFile(path)) return
         const state = useEditorStore.getState()
         const existing = state.tabs.find((t) => isSameFilePath(t.filePath, path))
         if (existing) {
-          runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+          state.setActiveTab(existing.id)
           return
         }
         const content = await readMarkdownFileForOpen(path)
         const name = path.split(/[/\\]/).pop() || 'untitled.md'
-        runDocumentSurfaceTransition(() => state.addTab(path, name, content), { animate })
+        state.addTab(path, name, content)
         scheduleMarkdownDocumentIndex(path, name, content)
     } catch (err) {
       if (err instanceof Error && err.message === 'Not running in Tauri') {
@@ -106,16 +104,16 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
     }
   }, [])
 
-  const handleOpenRecentFile = useCallback(async (file: { name: string; path: string }, animate = true) => {
+  const handleOpenRecentFile = useCallback(async (file: { name: string; path: string }) => {
     try {
       const state = useEditorStore.getState()
       const existing = state.tabs.find((t) => isSameFilePath(t.filePath, file.path))
       if (existing) {
-        runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+        state.setActiveTab(existing.id)
         return
       }
       const content = await readRememberedMarkdownFileForOpen(file.path)
-      runDocumentSurfaceTransition(() => state.addTab(file.path, file.name, content), { animate })
+      state.addTab(file.path, file.name, content)
       scheduleMarkdownDocumentIndex(file.path, file.name, content)
     } catch (err) {
       if (err instanceof Error && err.message === 'Not running in Tauri') {
@@ -227,7 +225,7 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
           question="工作区"
           defaultExpanded
           answer={
-            <WorkspaceRoots onOpenFile={(path, animate) => { void handleOpenFileFromTree(path, animate) }} />
+            <WorkspaceRoots onOpenFile={(path) => { void handleOpenFileFromTree(path) }} />
           }
         />
       </div>
@@ -298,15 +296,15 @@ function FavoriteFiles({ files, onRefreshWorkspace }: {
     setContextMenu(null)
   }, [rename])
 
-  const handleOpenFavorite = useCallback(async (file: { name: string; path: string }, animate = true) => {
+  const handleOpenFavorite = useCallback(async (file: { name: string; path: string }) => {
     try {
       const state = useEditorStore.getState()
       const existing = state.tabs.find((t) => isSameFilePath(t.filePath, file.path))
       if (existing) {
-        runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+        state.setActiveTab(existing.id)
       } else {
         const content = await readRememberedMarkdownFileForOpen(file.path)
-        runDocumentSurfaceTransition(() => state.addTab(file.path, file.name, content), { animate })
+        state.addTab(file.path, file.name, content)
         scheduleMarkdownDocumentIndex(file.path, file.name, content)
       }
       setMissingPaths((current) => {
@@ -346,7 +344,7 @@ function FavoriteFiles({ files, onRefreshWorkspace }: {
         return (
           <button
             key={file.path}
-            onClick={(event) => void handleOpenFavorite(file, event.detail !== 0)}
+            onClick={() => void handleOpenFavorite(file)}
             onContextMenu={(e) => {
               e.preventDefault()
               setContextMenu({ x: e.clientX, y: e.clientY, file })

@@ -11,7 +11,6 @@ import { RecentFiles } from '@/components/file-tree/FileTree'
 import { WorkspaceRoots } from '@/components/file-tree/WorkspaceRoots'
 import { Button, Collapse } from 'animal-island-ui'
 import { getRuntimeCapabilities } from '@/services/runtimeCapabilities'
-import { runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 
 interface FullscreenFileDrawerProps {
   open: boolean
@@ -56,18 +55,18 @@ export function FullscreenFileDrawer({
     }
   }, [open, onClose])
 
-  const openFileByPath = useCallback(async (path: string, fallbackName?: string, animate = true) => {
+  const openFileByPath = useCallback(async (path: string, fallbackName?: string) => {
     try {
       if (!isWorkspaceDisplayFile(path)) return
       const name = fallbackName || path.split(/[/\\]/).pop() || 'untitled.md'
       const state = useEditorStore.getState()
       const existing = state.tabs.find((t) => isSameFilePath(t.filePath, path))
       if (existing) {
-        runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+        state.setActiveTab(existing.id)
         return
       }
       const content = await readRememberedMarkdownFileForOpen(path)
-      runDocumentSurfaceTransition(() => state.addTab(path, name, content), { animate })
+      state.addTab(path, name, content)
       scheduleMarkdownDocumentIndex(path, name, content)
     } catch (err) {
       if (err instanceof Error && err.message === 'Not running in Tauri') {
@@ -80,12 +79,12 @@ export function FullscreenFileDrawer({
     }
   }, [])
 
-  const handleOpenFileFromTree = useCallback((path: string, animate?: boolean) => {
-    void openFileByPath(path, undefined, animate)
+  const handleOpenFileFromTree = useCallback((path: string) => {
+    void openFileByPath(path)
   }, [openFileByPath])
 
-  const handleOpenListedFile = useCallback((file: { name: string; path: string }, animate?: boolean) => {
-    void openFileByPath(file.path, file.name, animate)
+  const handleOpenListedFile = useCallback((file: { name: string; path: string }) => {
+    void openFileByPath(file.path, file.name)
   }, [openFileByPath])
 
   const refreshWorkspaces = useCallback(() => {
@@ -189,7 +188,7 @@ function FavoriteFileList({
 }: {
   files: { name: string; path: string }[]
   activeFilePath?: string | null
-  onOpen: (file: { name: string; path: string }, animate?: boolean) => void
+  onOpen: (file: { name: string; path: string }) => void
 }) {
   return (
     <div className="space-y-0.5 py-1">
@@ -199,7 +198,7 @@ function FavoriteFileList({
           <button
             key={file.path}
             type="button"
-            onClick={(event) => onOpen(file, event.detail !== 0)}
+            onClick={() => onOpen(file)}
             className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-caption text-left truncate ${
               isActive
                 ? 'bg-gm-primary-subtle text-gm-text font-bold'

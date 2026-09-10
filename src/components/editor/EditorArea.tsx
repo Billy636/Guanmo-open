@@ -37,7 +37,6 @@ import { AnnotationHoverOverlay, type AnnotationHoverOverlayHandle } from './Ann
 import { isSameFilePath } from '@/services/pathIdentity'
 import { ContextMenu, ContextMenuGroupTitle, ContextMenuItem, ContextMenuSeparator } from '@/components/common/ContextMenu'
 import { getRuntimeCapabilities } from '@/services/runtimeCapabilities'
-import { runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 import {
   ScrollSyncSession,
   mapPerformancePolicy,
@@ -581,9 +580,6 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
       || (rightInitialPreviewPosition?.topLine ?? 1) > 1
     )
   )
-  const documentSurfaceMasked = !activeDocumentFirstScreenReady
-    || (leftPreviewVisible && (!previewContentReady || leftPreviewMasked))
-    || (viewMode === 'dual-preview' && rightPreviewMasked)
 
   // 预览内容更新（版本变化）只恢复预览自身位置，保证右侧渲染稳定；
   // 绝不在内容更新时反向恢复编辑器位置——否则右侧渲染会把左侧视口拉走
@@ -1596,11 +1592,6 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
           <WelcomeScreen />
         ) : (
           <>
-            <div
-              data-gm-document-surface
-              data-gm-document-surface-masked={documentSurfaceMasked ? 'true' : undefined}
-              className="flex min-w-0 flex-1 overflow-hidden"
-            >
             {(viewMode === 'diff-preview' || diffMounted) && (
               <div className={viewMode === 'diff-preview' ? 'flex min-w-0 flex-1' : 'hidden'}>
                 <Suspense fallback={<PreviewSuspenseFallback />}>
@@ -1724,7 +1715,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
                 title={rightTab?.title || '选择文件'}
                 onClose={() => {
                   setRightPaneTabId(null)
-                  runDocumentSurfaceTransition(() => useEditorStore.getState().setViewMode('edit'), { animate: true, kind: 'mode' })
+                  useEditorStore.getState().setViewMode('edit')
                 }}
               />
               {rightTab ? (
@@ -1761,7 +1752,6 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
               )}
             </div>
             )}
-            </div>
             {viewMode === 'dual-preview' && (
             <MarkdownToc
               collapsed={tocCollapsed}

@@ -11,7 +11,6 @@ import { saveTabAsFile } from '@/services/fileEntryActions'
 import { describeFileOperationError } from '@/services/fileOperationErrors'
 import { toast } from '@/services/toast'
 import { useFileRename } from '@/hooks/useFileRename'
-import { isPointerActivation, runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 
 interface TabBarProps {
   onOpenSettings?: () => void
@@ -222,9 +221,9 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
     [contextMenu, contextTab, tabs, closeTab, rename, setRightPaneTabId, viewMode, setViewMode, togglePinTab]
   )
 
-  const handleModeChange = useCallback((mode: ViewMode, event: React.MouseEvent<HTMLButtonElement>) => {
-    runDocumentSurfaceTransition(() => setViewMode(mode), { animate: isPointerActivation(event) && viewMode !== mode, kind: 'mode' })
-  }, [setViewMode, viewMode])
+  const handleModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode)
+  }, [setViewMode])
 
   const handleExportHtml = useCallback(async () => {
     const tab = tabs.find((item) => item.id === activeTabId)
@@ -287,7 +286,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
                 role="button"
                 tabIndex={0}
                 draggable={!rename.isRenaming(tab.id)}
-                onClick={(event) => runDocumentSurfaceTransition(() => setActiveTab(tab.id), { animate: isPointerActivation(event) && activeTabId !== tab.id })}
+                onClick={() => setActiveTab(tab.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
@@ -404,7 +403,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
           </button>
           <ModeButton
             active={viewMode === 'edit'}
-            onClick={(event) => handleModeChange('edit', event)}
+            onClick={() => handleModeChange('edit')}
             title="编辑模式"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -414,7 +413,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
           </ModeButton>
           <ModeButton
             active={viewMode === 'preview'}
-            onClick={(event) => handleModeChange('preview', event)}
+            onClick={() => handleModeChange('preview')}
             title="预览模式"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -424,7 +423,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
           </ModeButton>
           <ModeButton
             active={viewMode === 'edit-preview'}
-            onClick={(event) => handleModeChange('edit-preview', event)}
+            onClick={() => handleModeChange('edit-preview')}
             title="编辑+预览"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -434,7 +433,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
           </ModeButton>
           <ModeButton
             active={viewMode === 'dual-preview'}
-            onClick={(event) => handleModeChange('dual-preview', event)}
+            onClick={() => handleModeChange('dual-preview')}
             title="对照阅读"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -446,7 +445,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
           </ModeButton>
           <ModeButton
             active={viewMode === 'diff-preview'}
-            onClick={(event) => handleModeChange('diff-preview', event)}
+            onClick={() => handleModeChange('diff-preview')}
             title="Diff 对比"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -556,7 +555,7 @@ export function TabBar({ onOpenSettings }: TabBarProps) {
 function ModeButton({ children, active, onClick, title }: {
   children: React.ReactNode
   active: boolean
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onClick: () => void
   title: string
 }) {
   return (

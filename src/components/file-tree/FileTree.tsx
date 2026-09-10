@@ -17,11 +17,10 @@ import { toast } from '@/services/toast'
 import { Tooltip, TruncatedText } from '@/components/common/Tooltip'
 import { useFileRename } from '@/hooks/useFileRename'
 import { getRuntimeCapabilities } from '@/services/runtimeCapabilities'
-import { runDocumentSurfaceTransition } from '@/components/common/documentSurfaceTransition'
 
 interface FileTreeProps {
   nodes: FileNode[]
-  onOpenFile?: (path: string, animate?: boolean) => void
+  onOpenFile?: (path: string) => void
   workspacePath?: string | null
   onRefreshWorkspace?: () => void
   onCloseWorkspace?: () => void
@@ -127,17 +126,16 @@ export function FileTree({ nodes, onOpenFile, workspacePath, onRefreshWorkspace,
 }
 
 function EmptyState() {
-  const handleOpenFile = useCallback(async (event?: React.MouseEvent) => {
-    const animate = event?.detail !== 0
+  const handleOpenFile = useCallback(async () => {
     try {
       const file = await openFile()
       if (file) {
         const state = useEditorStore.getState()
         const existing = state.tabs.find((t) => isSameFilePath(t.filePath, file.path))
         if (existing) {
-          runDocumentSurfaceTransition(() => state.setActiveTab(existing.id), { animate })
+          state.setActiveTab(existing.id)
         } else {
-          runDocumentSurfaceTransition(() => state.addTab(file.path, file.name, file.content), { animate })
+          state.addTab(file.path, file.name, file.content)
         }
       }
     } catch (err) {
@@ -170,7 +168,7 @@ function FileTreeNode({
 }: {
   node: FileNode
   depth: number
-  onOpenFile?: (path: string, animate?: boolean) => void
+  onOpenFile?: (path: string) => void
   onRefreshWorkspace?: () => void
 }) {
   const [expanded, setExpanded] = useState(depth === 0)
@@ -182,11 +180,11 @@ function FileTreeNode({
   const databaseEnabled = getRuntimeCapabilities().database
   const [kbStatus, setKbStatus] = useState<'idle' | 'checking' | 'not-indexed' | 'indexed' | 'adding'>('idle')
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = useCallback(() => {
     if (node.type === 'directory') {
       setExpanded((prev) => !prev)
     } else {
-      onOpenFile?.(node.path, event.detail !== 0)
+      onOpenFile?.(node.path)
     }
   }, [node, onOpenFile])
 
@@ -393,7 +391,7 @@ function FileTreeNode({
 
 export function RecentFiles({ files, onOpen, onRefreshWorkspace }: {
   files: { name: string; path: string }[]
-  onOpen?: (file: { name: string; path: string }, animate?: boolean) => void
+  onOpen?: (file: { name: string; path: string }) => void
   onRefreshWorkspace?: () => void
 }) {
   const tabs = useEditorStore((s) => s.tabs)
@@ -406,18 +404,18 @@ export function RecentFiles({ files, onOpen, onRefreshWorkspace }: {
   const [kbStatus, setKbStatus] = useState<'idle' | 'checking' | 'not-indexed' | 'indexed' | 'adding'>('idle')
 
   const handleOpen = useCallback(
-    async (file: { name: string; path: string }, animate = true) => {
+    async (file: { name: string; path: string }) => {
       if (onOpen) {
-        onOpen(file, animate)
+        onOpen(file)
         return
       }
       try {
         const existing = tabs.find((t) => isSameFilePath(t.filePath, file.path))
         if (existing) {
-          runDocumentSurfaceTransition(() => setActiveTab(existing.id), { animate: animate && existing.id !== useEditorStore.getState().activeTabId })
+          setActiveTab(existing.id)
         } else {
           const content = await readRememberedMarkdownFileForOpen(file.path)
-          runDocumentSurfaceTransition(() => addTab(file.path, file.name, content), { animate })
+          addTab(file.path, file.name, content)
         }
       } catch (err) {
         toast.error(describeFileOperationError(err, '打开最近文件失败'))
@@ -446,7 +444,7 @@ export function RecentFiles({ files, onOpen, onRefreshWorkspace }: {
         return (
           <button
             key={file.path}
-            onClick={(event) => void handleOpen(file, event.detail !== 0)}
+            onClick={() => handleOpen(file)}
             onContextMenu={(e) => {
               e.preventDefault()
               setContextMenu({ x: e.clientX, y: e.clientY, file })
