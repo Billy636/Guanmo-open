@@ -2247,12 +2247,24 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (activePreviewRoot !== rootRef.current) return
       const target = event.target
-      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], .cm-editor, .gm-inline-markdown-editor')) return
+      const key = event.key.toLowerCase()
+      const isCopyShortcut = (event.ctrlKey || event.metaKey) && key === 'c'
+      const targetElement = target instanceof Element ? target : null
+      const editableTarget = targetElement?.closest('input, textarea, select, [contenteditable="true"], .cm-editor, .gm-inline-markdown-editor')
+      if (editableTarget) {
+        const isSearchField = targetElement instanceof HTMLInputElement
+          && Boolean(targetElement.closest('[data-editor-search-overlay][data-search-target="preview"]'))
+        const hasNativeSelection = isSearchField
+          && typeof targetElement.selectionStart === 'number'
+          && typeof targetElement.selectionEnd === 'number'
+          && targetElement.selectionStart !== targetElement.selectionEnd
+        // 搜索框保持焦点时，预览拖选仍是最近一次文本交互；只有搜索框自身有选中文字时保留原生复制。
+        if (!isCopyShortcut || !isSearchField || hasNativeSelection) return
+      }
       if (!(event.ctrlKey || event.metaKey)) {
         if (event.key === 'Escape' && selectionRangeRef.current) applySelection(null)
         return
       }
-      const key = event.key.toLowerCase()
       if (key === 'a') {
         // 逻辑全文选择：selectionRange = 文档开始 → 文档结束，不依赖 DOM
         event.preventDefault()

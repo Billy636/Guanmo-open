@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState, type MutableRefObject } from 'react'
 import { flushSync } from 'react-dom'
 import { MarkdownPreview } from '@/components/editor/MarkdownPreview'
+import { SearchOverlay } from '@/components/editor/SearchOverlay'
 import { AnnotationHoverOverlay, type AnnotationHoverOverlayHandle } from '@/components/editor/AnnotationHoverOverlay'
 import { createMarkdownPreviewModel } from '@/services/markdownPreviewModel'
 import { createReadingMarkAnchor, readingDocumentId, type ReadingMark, type UpdateReadingMarkPatch } from '@/services/readingMarks'
@@ -290,6 +291,50 @@ describe('MarkdownPreview 批注浮层', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: '添加批注' })).toBeInTheDocument())
     expect(previewRef.current?.getSelection()?.text).toBe('第一段批注目标。第二段批注目标。')
+  })
+
+  it('搜索框保持焦点时，Ctrl+C 复制预览拖选而非搜索框内容', async () => {
+    const caretRangeFromPoint = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+    caretRangeFromPoint.caretRangeFromPoint = (x) => {
+      const textNode = host?.querySelector('[data-md-block-index]')?.querySelector('p span')?.firstChild
+      if (!textNode) return null
+      const range = document.createRange()
+      const offset = x < 50 ? 0 : (textNode.textContent?.length ?? 0)
+      range.setStart(textNode, offset)
+      range.setEnd(textNode, offset)
+      return range
+    }
+    const previewRef = { current: null } as MutableRefObject<MarkdownPreviewHandle | null>
+    const paneRef = { current: null } as MutableRefObject<HTMLDivElement | null>
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(
+      <div ref={paneRef}>
+        <MarkdownPreview ref={previewRef} content={content} documentKey="doc-copy-search" documentVersion={1} filePath={documentPath} />
+        <SearchOverlay
+          onClose={vi.fn()}
+          previewSources={[{ content, paneRef, previewRef }]}
+        />
+      </div>,
+      { container: host! },
+    )
+    const searchInput = screen.getByPlaceholderText('搜索...') as HTMLInputElement
+    expect(document.activeElement).toBe(searchInput)
+    const block = host!.querySelector<HTMLElement>('[data-md-block-index]')
+    expect(block).not.toBeNull()
+
+    fireEvent.mouseDown(block!, { button: 0, clientX: 4, clientY: 110 })
+    fireEvent.mouseUp(document, { button: 0, clientX: 120, clientY: 110 })
+    await waitFor(() => expect(previewRef.current?.getSelection()?.text).toBe(content))
+
+    fireEvent.keyDown(searchInput, { key: 'c', code: 'KeyC', ctrlKey: true })
+
+    expect(writeText).toHaveBeenCalledWith(content)
+
+    searchInput.value = '搜索框选中内容'
+    searchInput.setSelectionRange(0, 3)
+    fireEvent.keyDown(searchInput, { key: 'c', code: 'KeyC', ctrlKey: true })
+    expect(writeText).toHaveBeenCalledTimes(1)
   })
 
   it('外部点击关闭批注入口时清除临时选区且不创建持久化标记', async () => {
