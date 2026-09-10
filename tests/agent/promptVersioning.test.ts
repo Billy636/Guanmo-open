@@ -121,6 +121,8 @@ describe('版本切换不修改用户数据', () => {
     expect(first[1].role).toBe('system')
     expect(first.some((message) => message.content.includes('用户偏好层'))).toBe(true)
     expect(first.some((message) => message.content.includes('唯一主要对象'))).toBe(true)
+    expect(first.some((message) => message.content.includes('最多用一句话说明当前结论的适用范围'))).toBe(true)
+    expect(first.some((message) => message.content.includes('短词、术语或代码标识符'))).toBe(true)
   })
 })
 

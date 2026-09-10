@@ -26,7 +26,7 @@ import {
 export const ROUTING_RULES_VERSION = 'v1'
 
 /** Prompt 版本：修改任何系统 Prompt 或回答指令文本时递增。 */
-export const PROMPT_VERSION = 'v1'
+export const PROMPT_VERSION = 'v2'
 
 /** 无依赖确定性哈希（FNV-1a 32 位，hex 输出），用于内容指纹。 */
 export function hashText(text: string): string {

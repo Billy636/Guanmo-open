@@ -179,7 +179,7 @@ export function buildAgentFinalAnswerMessages(
     ...finalMessages,
     {
       role: 'user',
-      content: '如果工具结果不足、记忆不确定、数据不存在或证据太弱，必须明确说不确定或当前信息不足，禁止脑补。',
+      content: '仅当工具结果不足以支持当前问题的结论时，才简短指出具体缺口；如果已经能够回答，不要追加范围免责声明。需要说明时最多一句，不要建议用户继续选择、读取或定位其他章节。',
     },
   ]
 }
