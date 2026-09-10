@@ -166,6 +166,41 @@ body {
   transition-timing-function: cubic-bezier(0.18, 0.9, 0.18, 1) !important;
 }
 
+html[data-fullscreen-transition-phase='blurring'] #root,
+html[data-fullscreen-transition-phase='switching'] #root,
+html[data-fullscreen-transition-phase='focusing'] #root {
+  transform-origin: center;
+  backface-visibility: hidden;
+  will-change: filter, transform, opacity;
+  transition-property: filter, transform, opacity;
+  transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-fullscreen-transition-phase='blurring'] #root,
+html[data-fullscreen-transition-phase='switching'] #root {
+  filter: blur(4px);
+  transform: scale(0.994);
+  opacity: 0.96;
+  transition-duration: 100ms;
+}
+
+html[data-fullscreen-transition-phase='focusing'] #root {
+  filter: blur(0);
+  transform: scale(1);
+  opacity: 1;
+  transition-duration: 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-fullscreen-transition-phase] #root {
+    filter: none;
+    transform: none;
+    opacity: 1;
+    transition: none;
+    will-change: auto;
+  }
+}
+
 .gm-fullscreen-bubble:not([data-active='true']) {
   color: var(--gm-fullscreen-control-muted);
 }

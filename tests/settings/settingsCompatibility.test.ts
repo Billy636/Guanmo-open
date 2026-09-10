@@ -31,6 +31,7 @@ describe('设置兼容', () => {
       lastLightThemeId: 'warm',
       assistantVisualId: 'sprite',
       aiAssistantFontSize: 14,
+      fullscreenTransitionEnabled: true,
       motionPreference: 'system',
     })
     expect(state.webSearch).toMatchObject({ provider: 'duckduckgo', maxResults: 5, timeout: 60000 })
@@ -56,7 +57,19 @@ describe('设置兼容', () => {
     const state = store.getState()
 
     expect(state.editor).toMatchObject({ fontSize: 18, lineHeight: 1.65, fullscreenContentPadding: 88, inlinePreviewEdit: true, autoSendAiShortcut: true, defaultOpenMode: 'preview' })
-    expect(state.appearance).toMatchObject({ themeId: 'dark', lastLightThemeId: 'warm', aiAvatarStyle: 'sprite', aiAssistantFontSize: 14 })
+    expect(state.appearance).toMatchObject({ themeId: 'dark', lastLightThemeId: 'warm', aiAvatarStyle: 'sprite', aiAssistantFontSize: 14, fullscreenTransitionEnabled: true })
+  })
+
+  it('保留全屏过渡动画开关并对非法值回退开启', async () => {
+    const disabledStore = await loadSettingsStore({ appearance: { fullscreenTransitionEnabled: false } })
+    expect(disabledStore.getState().appearance.fullscreenTransitionEnabled).toBe(false)
+
+    disabledStore.getState().updateAppearanceSettings({ fullscreenTransitionEnabled: true })
+    const persisted = JSON.parse(localStorage.getItem('guanmo-settings') || '{}') as { state?: { appearance?: { fullscreenTransitionEnabled?: boolean } } }
+    expect(persisted.state?.appearance?.fullscreenTransitionEnabled).toBe(true)
+
+    const invalidStore = await loadSettingsStore({ appearance: { fullscreenTransitionEnabled: 'false' } })
+    expect(invalidStore.getState().appearance.fullscreenTransitionEnabled).toBe(true)
   })
 
   it.each([12, 14, 16, 18] as const)('保留合法 AI 助手字号 %ipx', async (fontSize) => {

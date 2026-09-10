@@ -1531,7 +1531,7 @@ function GeneralSettings() {
       modePerformancePolicy: 'balanced',
       defaultOpenMode: 'preview',
     })
-    updateAppearanceSettings({ customCursorEnabled: true, aiAvatarStyle: 'sprite', aiAssistantFontSize: 14, themeId: 'warm' })
+    updateAppearanceSettings({ customCursorEnabled: true, aiAvatarStyle: 'sprite', aiAssistantFontSize: 14, fullscreenTransitionEnabled: true, themeId: 'warm' })
     updateWebSearchConfig({ provider: 'duckduckgo', apiKey: '', maxResults: 5, customUrl: '', timeout: DEFAULT_REQUEST_TIMEOUT_MS })
     updateUsageTrackingSettings({ enabled: true })
     resetAiShortcutActions()
@@ -1705,6 +1705,10 @@ function GeneralSettings() {
             }
           }}
         />
+      </SettingField>
+      <SectionTitle>动效</SectionTitle>
+      <SettingField label="全屏过渡动画" description="用轻微失焦遮盖全屏尺寸切换；系统启用减少动态效果时会自动跳过">
+        <Switch checked={appearance.fullscreenTransitionEnabled} onChange={(v) => updateAppearanceSettings({ fullscreenTransitionEnabled: v })} />
       </SettingField>
       <Sep />
       <Button type="default" block onClick={handleRestoreDefaults}>恢复默认设置</Button>

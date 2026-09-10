@@ -20,6 +20,7 @@ mod perf_monitor;
 mod rag_index;
 mod reading_reminder_notifications;
 mod startup_metrics;
+mod window_transitions;
 use api_http::ApiOriginState;
 
 const SECRET_FILE: &str = "secrets.json";
@@ -1799,6 +1800,8 @@ pub fn run() {
             rag_index::remove_rag_index_document,
             perf_monitor::get_perf_snapshot,
             startup_metrics::record_startup_metrics,
+            window_transitions::begin_fullscreen_dwm_transition,
+            window_transitions::end_fullscreen_dwm_transition,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

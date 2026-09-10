@@ -62,6 +62,7 @@ interface AppearanceSettings extends AppearanceConfigV1 {
   customCursorEnabled: boolean
   aiAvatarStyle: AiAvatarStyle
   aiAssistantFontSize: AiAssistantFontSize
+  fullscreenTransitionEnabled: boolean
   lastLightThemeId: NonDarkThemeId
 }
 
@@ -138,6 +139,7 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   customCursorEnabled: false,
   aiAvatarStyle: 'sprite',
   aiAssistantFontSize: 14,
+  fullscreenTransitionEnabled: true,
   lastLightThemeId: 'warm',
 }
 
@@ -509,6 +511,9 @@ export const useSettingsStore = create<SettingsState>()(
                 : current.appearance.customCursorEnabled,
               aiAvatarStyle: resolveAiAvatarStyle(savedAppearance, current),
               aiAssistantFontSize: resolveAiAssistantFontSize(savedAppearance.aiAssistantFontSize),
+              fullscreenTransitionEnabled: typeof savedAppearance.fullscreenTransitionEnabled === 'boolean'
+                ? savedAppearance.fullscreenTransitionEnabled
+                : current.appearance.fullscreenTransitionEnabled,
               ...resolved,
               themeId,
               lastLightThemeId,
