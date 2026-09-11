@@ -78,6 +78,16 @@ describe('readingMarksStore unified cache', () => {
     expect(useReadingMarksStore.getState().byDocumentId[baseMark.documentId]).toEqual([])
   })
 
+  it('hydrates a document cache before updating a mark opened from the center', async () => {
+    mocks.update.mockResolvedValueOnce({ ...baseMark, color: 'blue' })
+
+    await useReadingMarksStore.getState().update(baseMark.id, baseMark.documentPath, { color: 'blue' })
+
+    expect(mocks.load).toHaveBeenCalledWith(baseMark.documentPath)
+    expect(mocks.update).toHaveBeenCalledWith(baseMark.id, { color: 'blue' })
+    expect(useReadingMarksStore.getState().byDocumentId[baseMark.documentId][0].color).toBe('blue')
+  })
+
   it('rolls back both projections when persistence fails', async () => {
     mocks.update.mockRejectedValueOnce(new Error('写入失败'))
     useReadingMarksStore.setState({ allMarks: [baseMark], byDocumentId: { [baseMark.documentId]: [baseMark] } })

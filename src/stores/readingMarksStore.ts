@@ -152,8 +152,13 @@ export const useReadingMarksStore = create<ReadingMarksState>((set, get) => ({
   },
   async update(id, documentPath, patch) {
     const documentId = readingDocumentId(documentPath)
-    const previous = get().byDocumentId[documentId] || []
-    const optimistic = previous.find((mark) => mark.id === id)
+    let previous = get().byDocumentId[documentId] || []
+    let optimistic = previous.find((mark) => mark.id === id)
+    if (!optimistic) {
+      await get().load(documentPath)
+      previous = get().byDocumentId[documentId] || []
+      optimistic = previous.find((mark) => mark.id === id)
+    }
     if (!optimistic) throw new Error('批注不存在')
     const optimisticNote = patch.note === undefined ? optimistic.note : (patch.note.trim() || undefined)
     const optimisticType: ReadingMarkType = optimisticNote?.trim() ? 'annotation' : 'highlight'
