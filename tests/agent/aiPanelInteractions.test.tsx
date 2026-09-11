@@ -123,6 +123,7 @@ describe('AI 面板视图返回', () => {
     Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 960 })
 
     fireEvent.click(screen.getByTitle('阅读成果'))
+    expect(screen.getByRole('region', { name: '阅读成果内容' }).closest('.overflow-hidden')).toBeInTheDocument()
     scrollTo.mockClear()
     fireEvent.click(screen.getByTitle('返回'))
 

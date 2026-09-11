@@ -217,6 +217,7 @@ export function ReadingArtifactCenter({
   const [expandedAiKey, setExpandedAiKey] = useState<string | null>(null)
   const reducedMotion = useReducedMotion() ?? false
   const rootRef = useRef<HTMLDivElement>(null)
+  const contentScrollerRef = useRef<HTMLDivElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLButtonElement | null>(null)
   const previousViewRef = useRef<CenterView>('recent')
@@ -436,8 +437,8 @@ export function ReadingArtifactCenter({
   }, [items])
 
   useEffect(() => {
-    const scroller = rootRef.current?.parentElement
     const frame = requestAnimationFrame(() => {
+      const scroller = contentScrollerRef.current
       if (scroller) scroller.scrollTop = view === 'detail' ? 0 : scrollPositionsRef.current[view]
       const previous = previousViewRef.current
       if (previous !== view) {
@@ -451,7 +452,7 @@ export function ReadingArtifactCenter({
 
   const changeView = (next: CenterView) => {
     if (next === view) return
-    const scroller = rootRef.current?.parentElement
+    const scroller = contentScrollerRef.current
     if (scroller) scrollPositionsRef.current[view] = scroller.scrollTop
     requestSequenceRef.current += 1
     const resetItems = next !== 'documents' && (next !== 'detail' || isDatabaseReady())
@@ -580,8 +581,8 @@ export function ReadingArtifactCenter({
   )
 
   return (
-    <div ref={rootRef} className="min-h-full bg-gm-canvas px-4 py-3 text-gm-text">
-      <div>
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col bg-gm-canvas text-gm-text">
+      <div className="shrink-0 px-4 pt-3">
           {view !== 'detail' && view !== 'focus' ? (
             <>
               <nav aria-label="阅读成果视图" role="tablist" className="mb-3 flex items-center gap-5 border-b border-gm-border-subtle">
@@ -634,6 +635,19 @@ export function ReadingArtifactCenter({
             </motion.div>
           )}
 
+          {view === 'detail' && (
+            <DetailControls
+              independent={!selectedDocument}
+              filter={detailFilter}
+              sort={detailSort}
+              onFilter={changeDetailFilter}
+              onSort={changeDetailSort}
+              reducedMotion={reducedMotion}
+            />
+          )}
+      </div>
+
+      <div ref={contentScrollerRef} role="region" aria-label="阅读成果内容" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 outline-none">
           {loading ? <EmptyState text="正在加载阅读成果…" /> : view === 'recent' ? (
             <RecentView items={recentItems} renderCard={renderCard} />
           ) : view === 'documents' ? (
@@ -642,11 +656,6 @@ export function ReadingArtifactCenter({
             items.length > 0 ? <div className="space-y-2">{items.map((item) => renderCard(item))}</div> : <EmptyState text={focusError || '该阅读成果不存在'} />
           ) : (
             <DetailView
-              independent={!selectedDocument}
-              filter={detailFilter}
-              sort={detailSort}
-              onFilter={changeDetailFilter}
-              onSort={changeDetailSort}
               reducedMotion={reducedMotion}
               contentPending={detailContent.pending}
               contentVersion={detailContent.version}
@@ -705,8 +714,8 @@ function DocumentView({ summaries, availability, onOpen }: { summaries: ReturnTy
   })}</div>
 }
 
-function DetailView({ independent, filter, sort, onFilter, onSort, reducedMotion, contentPending, contentVersion, positioned, other, renderCard }: { independent: boolean; filter: DetailFilter; sort: 'source' | 'time'; onFilter: (value: DetailFilter) => void; onSort: (value: 'source' | 'time') => void; reducedMotion: boolean; contentPending: boolean; contentVersion: number; positioned: ReadingArtifactItem[]; other: ReadingArtifactItem[]; renderCard: (item: ReadingArtifactItem) => React.ReactNode }) {
-  return <>
+function DetailControls({ independent, filter, sort, onFilter, onSort, reducedMotion }: { independent: boolean; filter: DetailFilter; sort: 'source' | 'time'; onFilter: (value: DetailFilter) => void; onSort: (value: 'source' | 'time') => void; reducedMotion: boolean }) {
+  return (
     <div className="mb-3 flex min-h-8 flex-wrap items-start gap-2">
       <nav aria-label="成果分类" role="tablist" className="flex min-w-0 flex-[1_1_12rem] flex-wrap items-center gap-1">
         {(['all', 'highlight', 'annotation', 'ai'] as const).map((value) => (
@@ -725,6 +734,11 @@ function DetailView({ independent, filter, sort, onFilter, onSort, reducedMotion
       </nav>
       {!independent && <SortMenu value={sort} onChange={onSort} />}
     </div>
+  )
+}
+
+function DetailView({ reducedMotion, contentPending, contentVersion, positioned, other, renderCard }: { reducedMotion: boolean; contentPending: boolean; contentVersion: number; positioned: ReadingArtifactItem[]; other: ReadingArtifactItem[]; renderCard: (item: ReadingArtifactItem) => React.ReactNode }) {
+  return (
     <div aria-busy={contentPending} className="grid">
       <AnimatePresence initial={false} mode="sync">
         <motion.div
@@ -741,7 +755,7 @@ function DetailView({ independent, filter, sort, onFilter, onSort, reducedMotion
         </motion.div>
       </AnimatePresence>
     </div>
-  </>
+  )
 }
 
 function SortMenu({ value, onChange }: { value: 'source' | 'time'; onChange: (value: 'source' | 'time') => void }) {

@@ -655,8 +655,8 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
 
       {panelView === 'chat' && <AgentTimeline timeline={timeline} />}
 
-      {/* Chat Content - 可以滚动到控制栏下面 */}
-      <div ref={chatContainerRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden min-w-0 bg-gm-surface ${panelView === 'chat' ? 'pb-32' : 'pb-0'}`}>
+      {/* Chat Content - 聊天保持外层滚动，阅读成果由页面内部接管滚动 */}
+      <div ref={chatContainerRef} className={`flex-1 min-h-0 ${panelView === 'artifacts' ? 'overflow-hidden' : 'overflow-y-auto'} overflow-x-hidden min-w-0 bg-gm-surface ${panelView === 'chat' ? 'pb-32' : 'pb-0'}`}>
         {panelView === 'artifacts' ? (
           <ReadingArtifactCenter onOpenAiSource={handleOpenArtifactSource} focusKey={artifactFocusKey} onCloseFocus={() => setArtifactFocusKey(null)} />
         ) : panelView === 'reminders' ? (

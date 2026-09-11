@@ -146,6 +146,26 @@ describe('ReadingArtifactCenter', () => {
     await waitFor(() => expect(screen.getByText('来源文档不可用')).toBeInTheDocument())
   })
 
+  it('keeps page controls outside the inner result scroller and restores its position', async () => {
+    render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
+
+    const contentRegion = screen.getByRole('region', { name: '阅读成果内容' })
+    expect(contentRegion).toHaveClass('overflow-y-auto')
+    expect(screen.getByRole('tablist', { name: '阅读成果视图' })).not.toContainElement(contentRegion)
+
+    contentRegion.scrollTop = 120
+    fireEvent.click(screen.getByRole('tab', { name: '按文档' }))
+    await screen.findByRole('button', { name: /A\.md/ })
+    fireEvent.click(screen.getByRole('tab', { name: '最近' }))
+
+    await waitFor(() => expect(contentRegion.scrollTop).toBe(120))
+
+    fireEvent.click(screen.getByRole('tab', { name: '按文档' }))
+    fireEvent.click(await screen.findByRole('button', { name: /A\.md/ }))
+    expect(screen.getByRole('tablist', { name: '成果分类' })).not.toContainElement(contentRegion)
+    await waitFor(() => expect(contentRegion.scrollTop).toBe(0))
+  })
+
   it('opens document detail with four filters and routes manual source navigation', async () => {
     mocks.fileExists.mockResolvedValue(true)
     render(<ReadingArtifactCenter onOpenAiSource={vi.fn()} />)
