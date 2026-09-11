@@ -844,6 +844,8 @@ function ExpandableText({
 }) {
   const textRef = useRef<HTMLDivElement>(null)
   const [metrics, setMetrics] = useState({ fullHeight: 0, collapsedHeight: 0, overflow: false })
+  const [hasMeasured, setHasMeasured] = useState(false)
+  const [enableMotion, setEnableMotion] = useState(false)
   const measure = useCallback(() => {
     const element = textRef.current
     if (!element) return
@@ -858,6 +860,7 @@ function ExpandableText({
     setMetrics((current) => current.fullHeight === fullHeight && current.collapsedHeight === collapsedHeight && current.overflow === overflow
       ? current
       : { fullHeight, collapsedHeight, overflow })
+    setHasMeasured(true)
     onOverflowChange(overflow)
   }, [lines, onOverflowChange, text])
 
@@ -870,12 +873,17 @@ function ExpandableText({
     return () => observer.disconnect()
   }, [measure])
 
+  useEffect(() => {
+    setEnableMotion(true)
+  }, [])
+
   const visibleHeight = expanded || !metrics.overflow ? 'auto' : metrics.collapsedHeight
   return (
     <motion.div
       animate={{ height: visibleHeight }}
       initial={false}
-      transition={reducedMotion ? { duration: 0 } : { height: MORPHING_MOTION_TOKENS.surface }}
+      transition={reducedMotion || !enableMotion ? { duration: 0 } : { height: MORPHING_MOTION_TOKENS.surface }}
+      style={hasMeasured ? undefined : { visibility: 'hidden' }}
       className="relative overflow-hidden"
     >
       <div ref={textRef} className={className}>{text}</div>
