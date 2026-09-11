@@ -117,6 +117,7 @@ export function SearchOverlay({ onClose, editorViewRef, searchRequest, previewSo
   const matchesRef = useRef<{ from: number; to: number }[]>([])
   const previewMatchesRef = useRef<PreviewMatch[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const appliedSearchRequestIdRef = useRef<number | null>(null)
 
   // Ensure searchField is in editor's extensions
   useEffect(() => {
@@ -336,11 +337,12 @@ export function SearchOverlay({ onClose, editorViewRef, searchRequest, previewSo
     }
   }, [handleNext, handlePrev])
 
+  useEffect(() => { inputRef.current?.focus() }, [])
+
   useEffect(() => {
-    inputRef.current?.focus()
-    if (searchRequest?.initialQuery) {
-      doSearch(searchRequest.initialQuery, searchRequest.anchor)
-    }
+    if (!searchRequest?.initialQuery || appliedSearchRequestIdRef.current === searchRequest.requestId) return
+    appliedSearchRequestIdRef.current = searchRequest.requestId
+    doSearch(searchRequest.initialQuery, searchRequest.anchor)
   }, [doSearch, searchRequest])
 
   return (

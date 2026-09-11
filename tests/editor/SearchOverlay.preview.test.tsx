@@ -28,6 +28,42 @@ describe('SearchOverlay 预览全文搜索', () => {
     expect(scrollToOffset).toHaveBeenLastCalledWith(content.lastIndexOf('目标二'))
   })
 
+  it('父组件重渲染后不重复消费 Ctrl+F 初始锚点', () => {
+    const paneRef = createRef<HTMLDivElement>()
+    const scrollToOffset = vi.fn()
+    const previewRef = { current: { scrollToOffset } }
+    const content = '目标一\n\n目标二'
+    const searchRequest = {
+      requestId: 1,
+      target: 'preview' as const,
+      initialQuery: '目标',
+      anchor: { offset: content.indexOf('目标一'), sourceIndex: 0 },
+    }
+    const { rerender } = render(
+      <SearchOverlay
+        onClose={vi.fn()}
+        searchRequest={searchRequest}
+        previewSources={[{ content, paneRef, previewRef }]}
+      />,
+    )
+
+    fireEvent.click(screen.getByTitle('下一个 (Enter)'))
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(scrollToOffset).toHaveBeenLastCalledWith(content.lastIndexOf('目标二'))
+
+    rerender(
+      <SearchOverlay
+        onClose={vi.fn()}
+        searchRequest={searchRequest}
+        previewSources={[{ content, paneRef, previewRef }]}
+      />,
+    )
+
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(scrollToOffset).toHaveBeenCalledTimes(2)
+    expect(scrollToOffset).toHaveBeenLastCalledWith(content.lastIndexOf('目标二'))
+  })
+
   it('统计未挂载内容并按匹配 offset 请求虚拟预览定位', () => {
     const paneRef = createRef<HTMLDivElement>()
     const scrollToOffset = vi.fn()
