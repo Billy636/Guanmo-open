@@ -2494,11 +2494,6 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
             if (isBlock) {
               return (
                 <CodeBlock code={code.replace(/\n$/, '')} language={language} fontSize={fontSize} startLine={getNodeStartLine(node, base)} endLine={getNodeEndLine(node, base)}>
-                  {language && (
-                    <div className="px-4 py-1.5 border-b border-gm-border text-micro text-gm-text-secondary font-mono">
-                      {language}
-                    </div>
-                  )}
                   <pre className="p-4 overflow-x-auto m-0">
                     <code className={['font-mono', className].filter(Boolean).join(' ')} style={{ fontSize: '0.9em' }}>
                       {children}
@@ -3002,21 +2997,32 @@ function CodeBlock({
     }
   }
 
+  const copyButton = (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="flex h-6 min-w-6 items-center justify-center border-0 bg-transparent px-1.5 text-micro text-gm-text-tertiary opacity-0 shadow-none transition-opacity hover:text-gm-primary group-hover:opacity-100 focus-visible:opacity-100"
+      title={language ? `复制 ${language} 代码` : '复制代码'}
+    >
+      {copied ? '已复制' : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        </svg>
+      )}
+    </button>
+  )
+
   return (
     <div className="group gm-code-block relative my-4 rounded-xl border border-gm-border overflow-hidden" data-md-line={startLine} data-md-end-line={endLine}>
-      <button
-        type="button"
-        onClick={() => void handleCopy()}
-        className="absolute right-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center rounded-md border border-gm-border bg-gm-surface/90 px-2 text-micro text-gm-text-tertiary opacity-0 shadow-sm transition-opacity hover:text-gm-primary group-hover:opacity-100 focus-visible:opacity-100"
-        title={language ? `复制 ${language} 代码` : '复制代码'}
-      >
-        {copied ? '已复制' : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-          </svg>
-        )}
-      </button>
+      {language ? (
+        <div className="flex items-center justify-between border-b border-gm-border px-4 py-1.5 text-micro text-gm-text-secondary font-mono">
+          <span>{language}</span>
+          {copyButton}
+        </div>
+      ) : (
+        <div className="absolute right-3 top-1 z-10">{copyButton}</div>
+      )}
       <div style={{ fontSize }}>
         {children}
       </div>
