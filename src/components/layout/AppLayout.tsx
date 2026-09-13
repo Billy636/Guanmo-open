@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
-import { useAppStore } from '@/stores/appStore'
+import { useAppStore, type FullscreenAiPosition } from '@/stores/appStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboard'
 import { useFileOperations } from '@/hooks/useFileOperations'
@@ -91,6 +91,8 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen)
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const aiPanelWidth = useAppStore((s) => s.aiPanelWidth)
+  const storedFullscreenAiPosition = useAppStore((s) => s.fullscreenAiPosition)
+  const persistFullscreenAiPosition = useAppStore((s) => s.setFullscreenAiPosition)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const toggleAiPanel = useAppStore((s) => s.toggleAiPanel)
   const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
@@ -119,13 +121,19 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     rightPaneUserSelected: boolean
     createdDemoTab: boolean
   } | null>(null)
-  const [fullscreenAiPosition, setFullscreenAiPosition] = useState(() => getDefaultFullscreenAiPosition())
+  const [fullscreenAiPosition, setFullscreenAiPosition] = useState<FullscreenAiPosition>(() => (
+    storedFullscreenAiPosition
+      ? clampFullscreenAiPosition(storedFullscreenAiPosition.x, storedFullscreenAiPosition.y)
+      : getDefaultFullscreenAiPosition()
+  ))
+  const fullscreenAiPositionRef = useRef(fullscreenAiPosition)
   const fullscreenAiDragRef = useRef<{
     pointerId: number
     startX: number
     startY: number
     originX: number
     originY: number
+    latestPosition: FullscreenAiPosition
     dragged: boolean
   } | null>(null)
   const fullscreenAiPanelRef = useRef<HTMLDivElement | null>(null)
@@ -133,12 +141,15 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   useEffect(() => {
     if (isFullscreen) {
       useAppStore.getState().closeAiPanel()
-      setFullscreenAiPosition(getDefaultFullscreenAiPosition())
+      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y)
+      fullscreenAiPositionRef.current = position
+      setFullscreenAiPosition(position)
+      persistFullscreenAiPosition(position)
       setFullscreenFileDrawerOpen(false)
     } else {
       setFullscreenFileDrawerOpen(false)
     }
-  }, [isFullscreen])
+  }, [isFullscreen, persistFullscreenAiPosition])
 
   // Sidebar resize
   const isSidebarResizing = useRef(false)
@@ -266,11 +277,14 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   useEffect(() => {
     if (!isFullscreen) return
     const handleResize = () => {
-      setFullscreenAiPosition((position) => clampFullscreenAiPosition(position.x, position.y))
+      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y)
+      fullscreenAiPositionRef.current = position
+      setFullscreenAiPosition(position)
+      persistFullscreenAiPosition(position)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [isFullscreen])
+  }, [isFullscreen, persistFullscreenAiPosition])
 
   const handleFullscreenAiDragStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -279,12 +293,13 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
-      originX: fullscreenAiPosition.x,
-      originY: fullscreenAiPosition.y,
+      originX: fullscreenAiPositionRef.current.x,
+      originY: fullscreenAiPositionRef.current.y,
+      latestPosition: fullscreenAiPositionRef.current,
       dragged: false,
     }
     document.body.style.userSelect = 'none'
-  }, [fullscreenAiPosition])
+  }, [])
 
   const handleFullscreenAiDragMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = fullscreenAiDragRef.current
@@ -292,7 +307,10 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.dragged = true
-    setFullscreenAiPosition(clampFullscreenAiPosition(drag.originX + dx, drag.originY + dy))
+    const position = clampFullscreenAiPosition(drag.originX + dx, drag.originY + dy)
+    drag.latestPosition = position
+    fullscreenAiPositionRef.current = position
+    setFullscreenAiPosition(position)
   }, [])
 
   const handleFullscreenAiDragEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -300,11 +318,12 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     if (drag?.pointerId === e.pointerId) {
       fullscreenAiDragRef.current = null
       document.body.style.userSelect = ''
+      persistFullscreenAiPosition(drag.latestPosition)
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId)
       }
     }
-  }, [])
+  }, [persistFullscreenAiPosition])
 
   useEffect(() => {
     if (!isFullscreen || !aiPanelOpen) return
