@@ -12,6 +12,11 @@ export interface FullscreenAiPosition {
   y: number
 }
 
+export interface FullscreenAiSize {
+  width: number
+  height: number
+}
+
 export type AiServiceStatus =
   | 'unchecked'
   | 'ok'
@@ -30,6 +35,7 @@ export interface AppState {
   sidebarWidth: number
   aiPanelWidth: number
   fullscreenAiPosition: FullscreenAiPosition | null
+  fullscreenAiSize: FullscreenAiSize | null
   workspaceRoots: WorkspaceRoot[]
   aiStatus: AiServiceStatus
   isFullscreen: boolean
@@ -40,6 +46,7 @@ export interface AppState {
   setSidebarWidth: (width: number) => void
   setAiPanelWidth: (width: number) => void
   setFullscreenAiPosition: (position: FullscreenAiPosition) => void
+  setFullscreenAiSize: (size: FullscreenAiSize) => void
   addWorkspaceRoot: (path: string) => boolean
   removeWorkspaceRoot: (id: string) => void
   resetWorkspaceForWebSession: () => void
@@ -73,6 +80,13 @@ function sanitizeFullscreenAiPosition(value: unknown): FullscreenAiPosition | nu
   return { x: candidate.x as number, y: candidate.y as number }
 }
 
+function sanitizeFullscreenAiSize(value: unknown): FullscreenAiSize | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<FullscreenAiSize>
+  if (!Number.isFinite(candidate.width) || !Number.isFinite(candidate.height)) return null
+  return { width: candidate.width as number, height: candidate.height as number }
+}
+
 export function migratePersistedAppState(persistedState: unknown): Partial<AppState> {
   const saved = (persistedState ?? {}) as Partial<AppState> & { workspacePath?: string | null }
   const workspaceRoots = sanitizeWorkspaceRoots(
@@ -86,6 +100,7 @@ export function migratePersistedAppState(persistedState: unknown): Partial<AppSt
   return {
     ...rest,
     fullscreenAiPosition: sanitizeFullscreenAiPosition(saved.fullscreenAiPosition),
+    fullscreenAiSize: sanitizeFullscreenAiSize(saved.fullscreenAiSize),
     workspaceRoots,
   }
 }
@@ -102,6 +117,7 @@ export const useAppStore = create<AppState>()(
       sidebarWidth: 260,
       aiPanelWidth: 360,
       fullscreenAiPosition: null,
+      fullscreenAiSize: null,
       workspaceRoots: [],
       aiStatus: 'unchecked',
       isFullscreen: false,
@@ -112,6 +128,7 @@ export const useAppStore = create<AppState>()(
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       setAiPanelWidth: (width) => set({ aiPanelWidth: width }),
       setFullscreenAiPosition: (position) => set({ fullscreenAiPosition: position }),
+      setFullscreenAiSize: (size) => set({ fullscreenAiSize: size }),
       addWorkspaceRoot: (path) => {
         const root = createWorkspaceRoot(path)
         if (!root) return false
@@ -140,6 +157,7 @@ export const useAppStore = create<AppState>()(
         sidebarWidth: state.sidebarWidth,
         aiPanelWidth: state.aiPanelWidth,
         fullscreenAiPosition: state.fullscreenAiPosition,
+        fullscreenAiSize: state.fullscreenAiSize,
         workspaceRoots: state.workspaceRoots,
       }),
       version: 1,

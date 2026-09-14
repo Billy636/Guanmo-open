@@ -93,17 +93,20 @@ describe('multi-root workspace state', () => {
     expect(useAppStore.getState().workspaceRoots.map((root) => root.path)).toEqual(['D:\\Notes'])
   })
 
-  it('persists and rehydrates the fullscreen AI position in desktop storage', async () => {
+  it('persists and rehydrates the fullscreen AI position and size in desktop storage', async () => {
     localStorage.removeItem('guanmo-app')
     act(() => {
       useAppStore.getState().setFullscreenAiPosition({ x: 128, y: 224 })
+      useAppStore.getState().setFullscreenAiSize({ width: 388, height: 560 })
     })
 
     const saved = localStorage.getItem('guanmo-app')
     expect(JSON.parse(saved!).state.fullscreenAiPosition).toEqual({ x: 128, y: 224 })
+    expect(JSON.parse(saved!).state.fullscreenAiSize).toEqual({ width: 388, height: 560 })
 
     act(() => {
       useAppStore.setState({ fullscreenAiPosition: null })
+      useAppStore.setState({ fullscreenAiSize: null })
     })
     localStorage.setItem('guanmo-app', saved!)
     await act(async () => {
@@ -111,6 +114,7 @@ describe('multi-root workspace state', () => {
     })
 
     expect(useAppStore.getState().fullscreenAiPosition).toEqual({ x: 128, y: 224 })
+    expect(useAppStore.getState().fullscreenAiSize).toEqual({ width: 388, height: 560 })
   })
 
   it('does not close tabs or clear global recent files and favorites when removing a root', () => {

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
-import { useAppStore, type FullscreenAiPosition } from '@/stores/appStore'
+import { useAppStore, type FullscreenAiPosition, type FullscreenAiSize } from '@/stores/appStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboard'
 import { useFileOperations } from '@/hooks/useFileOperations'
@@ -92,7 +92,9 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const aiPanelWidth = useAppStore((s) => s.aiPanelWidth)
   const storedFullscreenAiPosition = useAppStore((s) => s.fullscreenAiPosition)
+  const storedFullscreenAiSize = useAppStore((s) => s.fullscreenAiSize)
   const persistFullscreenAiPosition = useAppStore((s) => s.setFullscreenAiPosition)
+  const persistFullscreenAiSize = useAppStore((s) => s.setFullscreenAiSize)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const toggleAiPanel = useAppStore((s) => s.toggleAiPanel)
   const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
@@ -126,7 +128,13 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       ? clampFullscreenAiPosition(storedFullscreenAiPosition.x, storedFullscreenAiPosition.y)
       : getDefaultFullscreenAiPosition()
   ))
+  const [fullscreenAiSize, setFullscreenAiSize] = useState<FullscreenAiSize>(() => (
+    storedFullscreenAiSize
+      ? clampFullscreenAiSize(storedFullscreenAiSize.width, storedFullscreenAiSize.height)
+      : getFullscreenAiSize()
+  ))
   const fullscreenAiPositionRef = useRef(fullscreenAiPosition)
+  const fullscreenAiSizeRef = useRef(fullscreenAiSize)
   const fullscreenAiDragRef = useRef<{
     pointerId: number
     startX: number
@@ -136,12 +144,24 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     latestPosition: FullscreenAiPosition
     dragged: boolean
   } | null>(null)
+  const fullscreenAiResizeRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    originSize: FullscreenAiSize
+    latestSize: FullscreenAiSize
+    latestPosition: FullscreenAiPosition
+  } | null>(null)
   const fullscreenAiPanelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (isFullscreen) {
       useAppStore.getState().closeAiPanel()
-      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y)
+      const size = clampFullscreenAiSize(fullscreenAiSizeRef.current.width, fullscreenAiSizeRef.current.height)
+      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y, size)
+      fullscreenAiSizeRef.current = size
+      setFullscreenAiSize(size)
+      persistFullscreenAiSize(size)
       fullscreenAiPositionRef.current = position
       setFullscreenAiPosition(position)
       persistFullscreenAiPosition(position)
@@ -149,7 +169,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     } else {
       setFullscreenFileDrawerOpen(false)
     }
-  }, [isFullscreen, persistFullscreenAiPosition])
+  }, [isFullscreen, persistFullscreenAiPosition, persistFullscreenAiSize])
 
   // Sidebar resize
   const isSidebarResizing = useRef(false)
@@ -277,14 +297,18 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   useEffect(() => {
     if (!isFullscreen) return
     const handleResize = () => {
-      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y)
+      const size = clampFullscreenAiSize(fullscreenAiSizeRef.current.width, fullscreenAiSizeRef.current.height)
+      const position = clampFullscreenAiPosition(fullscreenAiPositionRef.current.x, fullscreenAiPositionRef.current.y, size)
+      fullscreenAiSizeRef.current = size
+      setFullscreenAiSize(size)
+      persistFullscreenAiSize(size)
       fullscreenAiPositionRef.current = position
       setFullscreenAiPosition(position)
       persistFullscreenAiPosition(position)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [isFullscreen, persistFullscreenAiPosition])
+  }, [isFullscreen, persistFullscreenAiPosition, persistFullscreenAiSize])
 
   const handleFullscreenAiDragStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -307,7 +331,11 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.dragged = true
-    const position = clampFullscreenAiPosition(drag.originX + dx, drag.originY + dy)
+    const position = clampFullscreenAiPosition(
+      drag.originX + dx,
+      drag.originY + dy,
+      fullscreenAiSizeRef.current,
+    )
     drag.latestPosition = position
     fullscreenAiPositionRef.current = position
     setFullscreenAiPosition(position)
@@ -324,6 +352,55 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       }
     }
   }, [persistFullscreenAiPosition])
+
+  const handleFullscreenAiResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    fullscreenAiResizeRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      originSize: fullscreenAiSizeRef.current,
+      latestSize: fullscreenAiSizeRef.current,
+      latestPosition: fullscreenAiPositionRef.current,
+    }
+    document.body.style.cursor = 'nwse-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
+
+  const handleFullscreenAiResizeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const resize = fullscreenAiResizeRef.current
+    if (!resize || resize.pointerId !== e.pointerId) return
+    const size = clampFullscreenAiSize(
+      resize.originSize.width + e.clientX - resize.startX,
+      resize.originSize.height + e.clientY - resize.startY,
+    )
+    const position = clampFullscreenAiPosition(
+      fullscreenAiPositionRef.current.x,
+      fullscreenAiPositionRef.current.y,
+      size,
+    )
+    resize.latestSize = size
+    resize.latestPosition = position
+    fullscreenAiSizeRef.current = size
+    fullscreenAiPositionRef.current = position
+    setFullscreenAiSize(size)
+    setFullscreenAiPosition(position)
+  }, [])
+
+  const handleFullscreenAiResizeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const resize = fullscreenAiResizeRef.current
+    if (resize?.pointerId !== e.pointerId) return
+    fullscreenAiResizeRef.current = null
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    persistFullscreenAiSize(resize.latestSize)
+    persistFullscreenAiPosition(resize.latestPosition)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }, [persistFullscreenAiPosition, persistFullscreenAiSize])
 
   useEffect(() => {
     if (!isFullscreen || !aiPanelOpen) return
@@ -536,12 +613,12 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       {isFullscreen && aiPanelOpen && (
         <div
           ref={fullscreenAiPanelRef}
-          className="fixed z-[45] flex flex-col overflow-hidden rounded-2xl border border-gm-border bg-gm-surface/92 shadow-lg backdrop-blur-xl animate-slideInRight"
+          className="fixed z-[45] flex flex-col overflow-hidden rounded-2xl border border-gm-border bg-gm-surface/92 shadow-lg backdrop-blur-xl animate-slideInRight relative"
           style={{
             left: fullscreenAiPosition.x,
             top: fullscreenAiPosition.y,
-            width: getFullscreenAiSize().width,
-            height: getFullscreenAiSize().height,
+            width: fullscreenAiSize.width,
+            height: fullscreenAiSize.height,
             contain: 'layout',
           }}
         >
@@ -552,9 +629,17 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
                 onPointerMove: handleFullscreenAiDragMove,
                 onPointerUp: handleFullscreenAiDragEnd,
                 onPointerCancel: handleFullscreenAiDragEnd,
-              }}
-            /></Suspense>
+            }}
+          /></Suspense>
           </div>
+          <div
+            aria-label="调整 AI 助手窗口大小"
+            className="absolute bottom-1 right-1 z-10 h-4 w-4 cursor-nwse-resize touch-none rounded-br border-b-2 border-r-2 border-gm-text-secondary/50 hover:border-gm-primary"
+            onPointerDown={handleFullscreenAiResizeStart}
+            onPointerMove={handleFullscreenAiResizeMove}
+            onPointerUp={handleFullscreenAiResizeEnd}
+            onPointerCancel={handleFullscreenAiResizeEnd}
+          />
         </div>
       )}
 
@@ -615,12 +700,24 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
 }
 
 const FULLSCREEN_AI_MARGIN = 16
+const FULLSCREEN_AI_MIN_WIDTH = 320
 const FULLSCREEN_AI_MAX_WIDTH = 404
+const FULLSCREEN_AI_MIN_HEIGHT = 360
+const FULLSCREEN_AI_MAX_HEIGHT = 680
 
 function getFullscreenAiSize() {
-  const width = Math.min(FULLSCREEN_AI_MAX_WIDTH, Math.max(320, window.innerWidth - FULLSCREEN_AI_MARGIN * 2))
-  const height = Math.min(680, Math.max(360, window.innerHeight - FULLSCREEN_AI_MARGIN * 2))
-  return { width, height }
+  return clampFullscreenAiSize(FULLSCREEN_AI_MAX_WIDTH, FULLSCREEN_AI_MAX_HEIGHT)
+}
+
+function clampFullscreenAiSize(width: number, height: number): FullscreenAiSize {
+  const availableWidth = Math.max(0, window.innerWidth - FULLSCREEN_AI_MARGIN * 2)
+  const availableHeight = Math.max(0, window.innerHeight - FULLSCREEN_AI_MARGIN * 2)
+  const maxWidth = Math.min(FULLSCREEN_AI_MAX_WIDTH, availableWidth)
+  const maxHeight = Math.min(FULLSCREEN_AI_MAX_HEIGHT, availableHeight)
+  return {
+    width: Math.min(maxWidth, Math.max(Math.min(FULLSCREEN_AI_MIN_WIDTH, maxWidth), width)),
+    height: Math.min(maxHeight, Math.max(Math.min(FULLSCREEN_AI_MIN_HEIGHT, maxHeight), height)),
+  }
 }
 
 function getDefaultFullscreenAiPosition() {
@@ -628,8 +725,7 @@ function getDefaultFullscreenAiPosition() {
   return clampFullscreenAiPosition(window.innerWidth - size.width - FULLSCREEN_AI_MARGIN, 64)
 }
 
-function clampFullscreenAiPosition(x: number, y: number) {
-  const size = getFullscreenAiSize()
+function clampFullscreenAiPosition(x: number, y: number, size = getFullscreenAiSize()) {
   const maxX = Math.max(FULLSCREEN_AI_MARGIN, window.innerWidth - size.width - FULLSCREEN_AI_MARGIN)
   const maxY = Math.max(FULLSCREEN_AI_MARGIN, window.innerHeight - size.height - FULLSCREEN_AI_MARGIN)
   return {
