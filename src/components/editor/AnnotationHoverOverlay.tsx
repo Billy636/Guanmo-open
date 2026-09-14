@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { ReadingMark, ReadingMarkColor, UpdateReadingMarkPatch } from '@/services/readingMarks'
 import { ReadingMarkToolbarContent } from './ReadingMarkToolbarContent'
 import { ReadingMarkToolbarShell, READING_MARK_TOOLBAR_CLOSE_DELAY } from './ReadingMarkToolbarShell'
@@ -41,10 +41,20 @@ export const AnnotationHoverOverlay = forwardRef<AnnotationHoverOverlayHandle, A
   const stateRef = useRef<OverlayState | null>(null)
   const hideTimerRef = useRef<number | null>(null)
   const closeTimerRef = useRef<number | null>(null)
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null)
   const [saving, setSaving] = useState(false)
   const reducedMotionRef = useRef(false)
 
   stateRef.current = state
+
+  useLayoutEffect(() => {
+    if (state?.mode !== 'text') return
+    const input = textInputRef.current
+    if (!input) return
+    input.focus()
+    const end = input.value.length
+    input.setSelectionRange(end, end)
+  }, [state?.mode])
 
   const cancelClose = useCallback(() => {
     if (closeTimerRef.current !== null) {
@@ -259,6 +269,7 @@ export const AnnotationHoverOverlay = forwardRef<AnnotationHoverOverlayHandle, A
           saving={saving}
           deleteConfirm={state.deleteConfirm}
           hasNote={hasNote}
+          textInputRef={textInputRef}
           textContentMotion={textContentMotion}
           colorContentMotion={colorContentMotion}
           triggerMotion={triggerMotion}

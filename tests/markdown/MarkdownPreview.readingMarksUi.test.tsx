@@ -698,6 +698,9 @@ describe('MarkdownPreview 批注浮层', () => {
     const trigger = await screen.findByRole('button', { name: '查看文字批注' })
     fireEvent.click(trigger)
     const textarea = await screen.findByRole('textbox', { name: '批注内容' })
+    expect(textarea).toHaveFocus()
+    expect(textarea.selectionStart).toBe('已有批注'.length)
+    expect(textarea.selectionEnd).toBe('已有批注'.length)
     const toolbar = textarea.closest('.gm-reading-mark-toolbar') as HTMLElement
     fireEvent.pointerOver(entries[1])
     fireEvent.pointerLeave(toolbar, { relatedTarget: document.body })
