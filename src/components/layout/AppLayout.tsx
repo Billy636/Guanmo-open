@@ -613,7 +613,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       {isFullscreen && aiPanelOpen && (
         <div
           ref={fullscreenAiPanelRef}
-          className="fixed z-[45] flex flex-col overflow-hidden rounded-2xl border border-gm-border bg-gm-surface/92 shadow-lg backdrop-blur-xl animate-slideInRight relative"
+          className="fixed z-[45] flex flex-col overflow-hidden rounded-2xl border border-gm-border bg-gm-surface/92 shadow-lg backdrop-blur-xl animate-slideInRight"
           style={{
             left: fullscreenAiPosition.x,
             top: fullscreenAiPosition.y,
@@ -634,12 +634,16 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
           </div>
           <div
             aria-label="调整 AI 助手窗口大小"
-            className="absolute bottom-1 right-1 z-10 h-4 w-4 cursor-nwse-resize touch-none rounded-br border-b-2 border-r-2 border-gm-text-secondary/50 hover:border-gm-primary"
+            className="absolute bottom-0 right-0 z-30 flex h-5 w-5 cursor-grab items-center justify-center text-gm-text-secondary touch-none hover:text-gm-primary active:cursor-grabbing"
             onPointerDown={handleFullscreenAiResizeStart}
             onPointerMove={handleFullscreenAiResizeMove}
             onPointerUp={handleFullscreenAiResizeEnd}
             onPointerCancel={handleFullscreenAiResizeEnd}
-          />
+          >
+            <svg className="rotate-90" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M5 5l10 10M10 5l5 5" />
+            </svg>
+          </div>
         </div>
       )}
 
@@ -700,13 +704,14 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
 }
 
 const FULLSCREEN_AI_MARGIN = 16
-const FULLSCREEN_AI_MIN_WIDTH = 320
-const FULLSCREEN_AI_MAX_WIDTH = 404
-const FULLSCREEN_AI_MIN_HEIGHT = 360
-const FULLSCREEN_AI_MAX_HEIGHT = 680
+const FULLSCREEN_AI_MIN_WIDTH = 360
+const FULLSCREEN_AI_MIN_HEIGHT = 520
+const FULLSCREEN_AI_RESIZE_SPAN = 280
+const FULLSCREEN_AI_MAX_WIDTH = FULLSCREEN_AI_MIN_WIDTH + FULLSCREEN_AI_RESIZE_SPAN
+const FULLSCREEN_AI_MAX_HEIGHT = FULLSCREEN_AI_MIN_HEIGHT + FULLSCREEN_AI_RESIZE_SPAN
 
 function getFullscreenAiSize() {
-  return clampFullscreenAiSize(FULLSCREEN_AI_MAX_WIDTH, FULLSCREEN_AI_MAX_HEIGHT)
+  return clampFullscreenAiSize(404, 680)
 }
 
 function clampFullscreenAiSize(width: number, height: number): FullscreenAiSize {

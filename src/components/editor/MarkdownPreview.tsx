@@ -2476,7 +2476,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
           code: ({ children, className, node }) => {
             // eslint-disable-next-line react-hooks/rules-of-hooks
             const base = useBlockLineBase()
-            const code = String(children)
+            const code = node ? getCodeNodeText(node) : String(children)
             const language = className?.match(/language-([\w-]+)/)?.[1]
             const isBlock = Boolean(language) || code.endsWith('\n')
             if (isBlock && language === 'mermaid') {
@@ -2968,6 +2968,13 @@ function getMountedSourceRangeTop(
     return rect.top - container.getBoundingClientRect().top + container.scrollTop
   }
   return undefined
+}
+
+type CodeTextNode = { type: string; value?: string; children?: CodeTextNode[] }
+
+function getCodeNodeText(node: CodeTextNode): string {
+  if (node.type === 'text') return node.value ?? ''
+  return node.children?.map(getCodeNodeText).join('') ?? ''
 }
 
 function CodeBlock({
