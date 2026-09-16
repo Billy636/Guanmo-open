@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { invoke } from '@tauri-apps/api/core'
 import { useEditorStore, type Tab } from '@/stores/editorStore'
 import { useAppStore } from '@/stores/appStore'
-import { FULLSCREEN_CONTENT_PADDING, useSettingsStore, type ThemeId } from '@/stores/settingsStore'
+import { FULLSCREEN_CONTENT_PADDING_PERCENT, useSettingsStore, type ThemeId } from '@/stores/settingsStore'
 import { createAppearanceRegistry, type ThemeDefinition } from '@/services/appearance/appearanceRegistry'
 import { addFileContextTag, summarizeFileWithAi } from '@/services/aiContext'
 import { addKnowledgeDocument, isKnowledgeDocumentIndexed } from '@/services/rag/knowledgeBase'
@@ -52,7 +52,7 @@ export function FullscreenControlBar({
   const toggleAiPanel = useAppStore((s) => s.toggleAiPanel)
   const themeId = useSettingsStore((s) => s.appearance.themeId)
   const themeSlots = useSettingsStore((s) => s.appearance.themeSlots)
-  const fullscreenContentPadding = useSettingsStore((s) => s.editor.fullscreenContentPadding)
+  const fullscreenContentPaddingPercent = useSettingsStore((s) => s.editor.fullscreenContentPaddingPercent)
   const updateAppearanceSettings = useSettingsStore((s) => s.updateAppearanceSettings)
   const updateEditorSettings = useSettingsStore((s) => s.updateEditorSettings)
   const fullscreenThemes = useMemo(() => createAppearanceRegistry(themeSlots).themes, [themeSlots])
@@ -551,13 +551,13 @@ export function FullscreenControlBar({
             </div>
             <SettingSlider
               label="全屏正文边距"
-              value={fullscreenContentPadding}
-              min={FULLSCREEN_CONTENT_PADDING.min}
-              max={FULLSCREEN_CONTENT_PADDING.max}
-              step={FULLSCREEN_CONTENT_PADDING.step}
+              value={fullscreenContentPaddingPercent}
+              min={FULLSCREEN_CONTENT_PADDING_PERCENT.min}
+              max={FULLSCREEN_CONTENT_PADDING_PERCENT.max}
+              step={FULLSCREEN_CONTENT_PADDING_PERCENT.step}
               debounceMs={FULLSCREEN_PADDING_DEBOUNCE_MS}
-              onChange={(value) => updateEditorSettings({ fullscreenContentPadding: Math.round(value) })}
-              format={(value) => `${value}px`}
+              onChange={(value) => updateEditorSettings({ fullscreenContentPaddingPercent: Math.round(value) })}
+              format={(value) => `${value}%`}
               className="mt-3"
               valueClassName="w-14"
             />

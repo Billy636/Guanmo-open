@@ -56,8 +56,13 @@ describe('设置兼容', () => {
     })
     const state = store.getState()
 
-    expect(state.editor).toMatchObject({ fontSize: 18, lineHeight: 1.65, fullscreenContentPadding: 88, inlinePreviewEdit: true, autoSendAiShortcut: true, defaultOpenMode: 'preview' })
+    expect(state.editor).toMatchObject({ fontSize: 18, lineHeight: 1.65, fullscreenContentPaddingPercent: 7, inlinePreviewEdit: true, autoSendAiShortcut: true, defaultOpenMode: 'preview' })
     expect(state.appearance).toMatchObject({ themeId: 'dark', lastLightThemeId: 'warm', aiAvatarStyle: 'sprite', aiAssistantFontSize: 14, fullscreenTransitionEnabled: true })
+  })
+
+  it('将旧版全屏像素边距迁移为百分比', async () => {
+    const store = await loadSettingsStore({ editor: { fullscreenContentPadding: 88 } })
+    expect(store.getState().editor.fullscreenContentPaddingPercent).toBe(7)
   })
 
   it('保留全屏过渡动画开关并对非法值回退开启', async () => {

@@ -152,7 +152,7 @@ describe('模式资源泄漏回归', () => {
         autoSendAiShortcut: true,
         inlinePreviewEdit: false,
         modePerformancePolicy: 'balanced',
-        fullscreenContentPadding: 88,
+        fullscreenContentPaddingPercent: 7,
       },
       ai: {
         protocol: 'openai-chat' as const,

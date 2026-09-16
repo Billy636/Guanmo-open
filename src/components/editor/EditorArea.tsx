@@ -148,7 +148,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     () => mapPerformancePolicy(modePerformancePolicy),
     [modePerformancePolicy],
   )
-  const fullscreenContentPadding = useSettingsStore((s) => s.editor.fullscreenContentPadding)
+  const fullscreenContentPaddingPercent = useSettingsStore((s) => s.editor.fullscreenContentPaddingPercent)
   const viewModeUsage = useEditorStore((s) => s.viewModeUsage)
   const isFullscreen = useAppStore((s) => s.isFullscreen)
   const editorViewRef = useRef<EditorView | null>(null)
@@ -1582,7 +1582,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
   return (
     <div
       className="flex-1 flex flex-col overflow-hidden bg-gm-canvas"
-      style={isFullscreen ? { '--gm-fullscreen-content-padding': `${fullscreenContentPadding}px` } as CSSProperties : undefined}
+      style={isFullscreen ? { '--gm-fullscreen-content-padding-percent': `${fullscreenContentPaddingPercent}%` } as CSSProperties : undefined}
     >
       {!isFullscreen && <TabBar />}
       <AnnotationHoverOverlay ref={annotationOverlayRef} onUpdate={handleOverlayUpdate} onDelete={handleOverlayDelete} />

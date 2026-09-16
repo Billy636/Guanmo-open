@@ -47,7 +47,7 @@ interface EditorSettings {
   autoSendAiShortcut: boolean
   inlinePreviewEdit: boolean
   modePerformancePolicy: 'memory' | 'balanced' | 'speed'
-  fullscreenContentPadding: number
+  fullscreenContentPaddingPercent: number
   defaultOpenMode: 'edit' | 'preview'
 }
 
@@ -109,12 +109,26 @@ interface SettingsState {
   restoreDefaultThemes: () => void
 }
 
-export const FULLSCREEN_CONTENT_PADDING = {
-  min: 16,
-  max: 480,
-  step: 8,
-  default: 88,
+export const FULLSCREEN_CONTENT_PADDING_PERCENT = {
+  min: 2,
+  max: 30,
+  step: 1,
+  default: 7,
 } as const
+
+const LEGACY_FULLSCREEN_CONTENT_PADDING_REFERENCE_WIDTH = 1280
+
+function resolveFullscreenContentPaddingPercent(value: unknown, legacyValue?: unknown) {
+  const numericValue = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : typeof legacyValue === 'number' && Number.isFinite(legacyValue)
+      ? Math.round((legacyValue / LEGACY_FULLSCREEN_CONTENT_PADDING_REFERENCE_WIDTH) * 100)
+      : FULLSCREEN_CONTENT_PADDING_PERCENT.default
+  return Math.min(
+    FULLSCREEN_CONTENT_PADDING_PERCENT.max,
+    Math.max(FULLSCREEN_CONTENT_PADDING_PERCENT.min, Math.round(numericValue)),
+  )
+}
 
 const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   fontSize: 14,
@@ -130,7 +144,7 @@ const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   autoSendAiShortcut: true,
   inlinePreviewEdit: true,
   modePerformancePolicy: 'balanced',
-  fullscreenContentPadding: FULLSCREEN_CONTENT_PADDING.default,
+  fullscreenContentPaddingPercent: FULLSCREEN_CONTENT_PADDING_PERCENT.default,
   defaultOpenMode: 'preview',
 }
 
@@ -469,13 +483,22 @@ export const useSettingsStore = create<SettingsState>()(
               modePrewarm: _mp,
               modeResourcePolicy: _mrp,
               modePerformancePolicy: _mpp,
+              fullscreenContentPadding: legacyFullscreenContentPadding,
               ...cleanSaved
             } = savedEditor as Record<string, unknown>
             const mergedEditor = { ...current.editor, ...cleanSaved }
+            const fullscreenContentPaddingPercent = resolveFullscreenContentPaddingPercent(
+              cleanSaved.fullscreenContentPaddingPercent,
+              legacyFullscreenContentPadding,
+            )
             const validPolicies = ['memory', 'balanced', 'speed']
             const newPolicy = savedEditor.modePerformancePolicy
             if (typeof newPolicy === 'string' && validPolicies.includes(newPolicy)) {
-              return { ...mergedEditor, modePerformancePolicy: newPolicy as 'memory' | 'balanced' | 'speed' }
+              return {
+                ...mergedEditor,
+                fullscreenContentPaddingPercent,
+                modePerformancePolicy: newPolicy as 'memory' | 'balanced' | 'speed',
+              }
             }
             const oldPrewarm = savedEditor.modePrewarm
             const oldResource = savedEditor.modeResourcePolicy
@@ -491,7 +514,7 @@ export const useSettingsStore = create<SettingsState>()(
               const resourceRank = ({ memory: 0, balanced: 1, speed: 2 } as Record<string, number>)[oldResource as string] ?? 1
               migrated = (['memory', 'balanced', 'speed'] as const)[Math.min(prewarmRank, resourceRank)]
             }
-            return { ...mergedEditor, modePerformancePolicy: migrated }
+            return { ...mergedEditor, fullscreenContentPaddingPercent, modePerformancePolicy: migrated }
           })(),
           appearance: (() => {
             const savedAppearance = (saved.appearance ?? {}) as unknown as Record<string, unknown>

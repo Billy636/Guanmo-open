@@ -1634,13 +1634,13 @@ html[data-gm-runtime='web'] .gm-settings-tabs--web > div:nth-child(2) {
 }
 
 .gm-fullscreen-editor-content .cm-content {
-  padding-left: var(--gm-fullscreen-content-padding, 88px);
-  padding-right: var(--gm-fullscreen-content-padding, 88px);
+  padding-left: var(--gm-fullscreen-content-padding-percent, 7%);
+  padding-right: var(--gm-fullscreen-content-padding-percent, 7%);
 }
 
 .gm-fullscreen-preview-content {
-  padding-left: var(--gm-fullscreen-content-padding, 88px);
-  padding-right: var(--gm-fullscreen-content-padding, 88px);
+  padding-left: var(--gm-fullscreen-content-padding-percent, 7%);
+  padding-right: var(--gm-fullscreen-content-padding-percent, 7%);
 }
 
 /* 分屏模式：内侧边距固定 15px，外侧保持全量 */
@@ -1652,7 +1652,7 @@ html[data-gm-runtime='web'] .gm-settings-tabs--web > div:nth-child(2) {
 /* 分屏左栏为编辑器时，行号槽在布局流中占据宽度（由 CodeMirrorEditor 实测为 --gm-cm-gutter-width），
    外侧留白需扣除行号槽宽度，使编辑栏文本起点与预览栏文本终点到屏幕边缘的距离一致、两栏文本列等宽 */
 .gm-fullscreen-content-split-left.gm-fullscreen-editor-content .cm-content {
-  padding-left: max(15px, calc(var(--gm-fullscreen-content-padding, 88px) - var(--gm-cm-gutter-width, 0px)));
+  padding-left: max(15px, calc(var(--gm-fullscreen-content-padding-percent, 7%) - var(--gm-cm-gutter-width, 0px)));
 }
 
 .gm-fullscreen-content-split-right.gm-fullscreen-editor-content .cm-content,
@@ -1676,7 +1676,7 @@ html[data-gm-runtime='web'] .gm-settings-tabs--web > div:nth-child(2) {
 
 .gm-fullscreen-toc-adjacent.gm-fullscreen-editor-content .cm-content,
 .gm-fullscreen-toc-adjacent.gm-fullscreen-preview-content {
-  padding-right: max(16px, calc(var(--gm-fullscreen-content-padding, 88px) - var(--gm-markdown-toc-width)));
+  padding-right: max(16px, calc(var(--gm-fullscreen-content-padding-percent, 7%) - var(--gm-markdown-toc-width)));
 }
 
 .gm-markdown-preview h1,
