@@ -532,7 +532,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     },
     'CTRL+J': () => toggleAiPanel(),
     'CTRL+N': () => handleNewFile(),
-    'CTRL+O': () => void runAfterNormalLayout(() => handleOpenFile()),
+    'CTRL+O': () => void handleOpenFile(),
     'CTRL+S': () => handleSaveFile(),
     'CTRL+SHIFT+V': () => togglePreview(),
     'CTRL+SHIFT+D': () => toggleDiffPreview(),
@@ -599,6 +599,8 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
           fileDrawerOpen={fullscreenFileDrawerOpen}
           onToggleFileDrawer={toggleFullscreenFileDrawer}
           onCloseFileDrawer={closeFullscreenFileDrawer}
+          onNewFile={handleNewFile}
+          onOpenFile={handleOpenFile}
         />
       )}
 

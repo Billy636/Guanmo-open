@@ -1633,6 +1633,21 @@ html[data-gm-runtime='web'] .gm-settings-tabs--web > div:nth-child(2) {
   backdrop-filter: blur(18px);
 }
 
+.gm-fullscreen-file-action {
+  color: var(--gm-fullscreen-control-text);
+}
+
+.gm-fullscreen-file-action:hover,
+.gm-fullscreen-file-action:focus-visible {
+  background: var(--gm-fullscreen-control-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #fullscreen-file-menu {
+    transition: none;
+  }
+}
+
 .gm-fullscreen-editor-content .cm-content {
   padding-left: var(--gm-fullscreen-content-padding-percent, 7%);
   padding-right: var(--gm-fullscreen-content-padding-percent, 7%);

@@ -32,12 +32,16 @@ interface FullscreenControlBarProps {
   fileDrawerOpen: boolean
   onToggleFileDrawer: () => void
   onCloseFileDrawer: () => void
+  onNewFile: () => void
+  onOpenFile: () => void
 }
 
 export function FullscreenControlBar({
   fileDrawerOpen,
   onToggleFileDrawer,
   onCloseFileDrawer,
+  onNewFile,
+  onOpenFile,
 }: FullscreenControlBarProps) {
   const tabs = useEditorStore((s) => s.tabs)
   const activeTabId = useEditorStore((s) => s.activeTabId)
@@ -66,6 +70,7 @@ export function FullscreenControlBar({
   const rename = useFileRename()
   const [paddingCardOpen, setPaddingCardOpen] = useState(false)
   const [themeCardOpen, setThemeCardOpen] = useState(false)
+  const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const hideTimerRef = useRef<number | null>(null)
   const contentTimerRef = useRef<number | null>(null)
   const pointerWithinControlRef = useRef(false)
@@ -112,6 +117,7 @@ export function FullscreenControlBar({
 
   const hideTabs = useCallback(() => {
     clearHideTimer()
+    setFileMenuOpen(false)
     if (fileDrawerOpen) {
       onCloseFileDrawer()
       return
@@ -121,13 +127,13 @@ export function FullscreenControlBar({
   }, [clearHideTimer, fileDrawerOpen, onCloseFileDrawer, switchPanel])
 
   const scheduleHide = useCallback(() => {
-    if (fileDrawerOpen || paddingCardOpen || themeCardOpen) return
+    if (fileDrawerOpen || paddingCardOpen || themeCardOpen || fileMenuOpen) return
     clearHideTimer()
     hideTimerRef.current = window.setTimeout(() => {
       setVisible(false)
       if (!contextMenu) switchPanel(false)
     }, tabMode ? 2200 : 700)
-  }, [clearHideTimer, contextMenu, fileDrawerOpen, paddingCardOpen, switchPanel, tabMode, themeCardOpen])
+  }, [clearHideTimer, contextMenu, fileDrawerOpen, fileMenuOpen, paddingCardOpen, switchPanel, tabMode, themeCardOpen])
 
   const handleControlMouseEnter = useCallback(() => {
     pointerWithinControlRef.current = true
@@ -155,9 +161,9 @@ export function FullscreenControlBar({
   }, [clearHideTimer, contextMenu, fileDrawerOpen, switchPanel])
 
   useEffect(() => {
-    if (!visible || fileDrawerOpen || paddingCardOpen || themeCardOpen) return
+    if (!visible || fileDrawerOpen || paddingCardOpen || themeCardOpen || fileMenuOpen) return
     if (!pointerWithinControlRef.current) scheduleHide()
-  }, [contextMenu, fileDrawerOpen, paddingCardOpen, scheduleHide, themeCardOpen, visible])
+  }, [contextMenu, fileDrawerOpen, fileMenuOpen, paddingCardOpen, scheduleHide, themeCardOpen, visible])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -167,6 +173,12 @@ export function FullscreenControlBar({
         e.preventDefault()
         e.stopPropagation()
         setContextMenu(null)
+        return
+      }
+      if (fileMenuOpen) {
+        e.preventDefault()
+        e.stopPropagation()
+        setFileMenuOpen(false)
         return
       }
       if (paddingCardOpen) {
@@ -209,19 +221,20 @@ export function FullscreenControlBar({
 
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [contextMenu, exitFullscreen, fileDrawerOpen, onCloseFileDrawer, paddingCardOpen, switchPanel, tabMode, themeCardOpen])
+  }, [contextMenu, exitFullscreen, fileDrawerOpen, fileMenuOpen, onCloseFileDrawer, paddingCardOpen, switchPanel, tabMode, themeCardOpen])
 
   useEffect(() => {
-    if (!paddingCardOpen && !themeCardOpen) return
+    if (!paddingCardOpen && !themeCardOpen && !fileMenuOpen) return
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null
-      if (target?.closest('[data-fullscreen-padding-control], [data-fullscreen-theme-control]')) return
+      if (target?.closest('[data-fullscreen-padding-control], [data-fullscreen-theme-control], [data-fullscreen-file-menu]')) return
       setPaddingCardOpen(false)
       setThemeCardOpen(false)
+      setFileMenuOpen(false)
     }
     window.addEventListener('pointerdown', handlePointerDown, true)
     return () => window.removeEventListener('pointerdown', handlePointerDown, true)
-  }, [paddingCardOpen, themeCardOpen])
+  }, [fileMenuOpen, paddingCardOpen, themeCardOpen])
 
   useLayoutEffect(() => {
     const shell = shellRef.current
@@ -262,6 +275,7 @@ export function FullscreenControlBar({
     clearHideTimer()
     setVisible(true)
     setThemeCardOpen(false)
+    setFileMenuOpen(false)
     setPaddingCardOpen((open) => !open)
   }, [clearHideTimer])
 
@@ -269,8 +283,23 @@ export function FullscreenControlBar({
     clearHideTimer()
     setVisible(true)
     setPaddingCardOpen(false)
+    setFileMenuOpen(false)
     setThemeCardOpen((open) => !open)
   }, [clearHideTimer])
+
+  const toggleFileMenu = useCallback(() => {
+    clearHideTimer()
+    setVisible(true)
+    setPaddingCardOpen(false)
+    setThemeCardOpen(false)
+    setFileMenuOpen((open) => !open)
+  }, [clearHideTimer])
+
+  const selectFileAction = useCallback((action: () => void) => {
+    setFileMenuOpen(false)
+    onCloseFileDrawer()
+    action()
+  }, [onCloseFileDrawer])
 
   const selectFullscreenTheme = useCallback((nextTheme: ThemeId) => {
     updateAppearanceSettings({ themeId: nextTheme })
@@ -474,7 +503,7 @@ export function FullscreenControlBar({
             renderedTabMode ? `relative ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}` : 'absolute inset-0 opacity-0 pointer-events-none'
           }`}
           >
-            <BubbleButton onClick={hideTabs} title="返回">
+            <BubbleButton onClick={hideTabs} title="返回" square>
               <span aria-hidden="true" className="block -translate-y-px text-[22px] font-serif leading-none">‹</span>
             </BubbleButton>
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1">
@@ -532,7 +561,30 @@ export function FullscreenControlBar({
                 )
               })}
             </div>
+            <div data-fullscreen-file-menu="true">
+              <BubbleButton onClick={toggleFileMenu} title="新建或打开文件" ariaExpanded={fileMenuOpen} ariaControls="fullscreen-file-menu" square>
+                <span aria-hidden="true" className="block -translate-y-px text-[22px] font-light leading-none">+</span>
+              </BubbleButton>
+            </div>
           </div>
+        </div>
+
+        <div
+          id="fullscreen-file-menu"
+          data-fullscreen-file-menu="true"
+          role="dialog"
+          aria-label="文件操作"
+          aria-hidden={!fileMenuOpen}
+          className={`gm-fullscreen-spacing-card absolute right-3 top-[calc(100%+10px)] w-40 origin-top-right rounded-xl border p-1.5 transition-[opacity,transform,visibility] duration-200 ease-out ${
+            fileMenuOpen ? 'visible translate-y-0 scale-100 opacity-100' : 'invisible -translate-y-1 scale-95 opacity-0 pointer-events-none'
+          }`}
+        >
+          <button type="button" onClick={() => selectFileAction(onNewFile)} className="gm-fullscreen-file-action w-full rounded-lg px-3 py-2 text-left text-body font-semibold transition-colors">
+            新增文件
+          </button>
+          <button type="button" onClick={() => selectFileAction(onOpenFile)} className="gm-fullscreen-file-action w-full rounded-lg px-3 py-2 text-left text-body font-semibold transition-colors">
+            打开文件
+          </button>
         </div>
 
         {paddingCardOpen && (
@@ -681,6 +733,7 @@ function BubbleButton({
   variant,
   ariaExpanded,
   ariaControls,
+  square = false,
 }: {
   children: React.ReactNode
   active?: boolean
@@ -689,6 +742,7 @@ function BubbleButton({
   variant?: 'pill' | 'text'
   ariaExpanded?: boolean
   ariaControls?: string
+  square?: boolean
 }) {
   return (
     <button
@@ -698,7 +752,7 @@ function BubbleButton({
       aria-expanded={ariaExpanded}
       aria-controls={ariaControls}
       data-active={active ? 'true' : 'false'}
-      className={`gm-fullscreen-bubble h-8 flex-shrink-0 whitespace-nowrap rounded-full px-3 text-body font-bold transition-colors ${
+      className={`gm-fullscreen-bubble h-8 flex-shrink-0 whitespace-nowrap rounded-full ${square ? 'w-8 p-0' : 'px-3'} text-body font-bold transition-colors ${
         active
           ? variant === 'text'
             ? 'text-gm-primary'

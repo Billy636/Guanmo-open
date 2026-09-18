@@ -23,6 +23,8 @@ describe('FullscreenControlBar auto hide', () => {
         fileDrawerOpen={false}
         onToggleFileDrawer={vi.fn()}
         onCloseFileDrawer={vi.fn()}
+        onNewFile={vi.fn()}
+        onOpenFile={vi.fn()}
       />,
     )
     const trigger = container.querySelector<HTMLElement>('[data-fullscreen-control-trigger]')
@@ -46,6 +48,8 @@ describe('FullscreenControlBar auto hide', () => {
     const props = {
       onToggleFileDrawer: vi.fn(),
       onCloseFileDrawer: vi.fn(),
+      onNewFile: vi.fn(),
+      onOpenFile: vi.fn(),
     }
     const { container, rerender } = render(
       <FullscreenControlBar fileDrawerOpen {...props} />,
@@ -82,11 +86,47 @@ describe('FullscreenControlBar auto hide', () => {
         fileDrawerOpen={false}
         onToggleFileDrawer={vi.fn()}
         onCloseFileDrawer={vi.fn()}
+        onNewFile={vi.fn()}
+        onOpenFile={vi.fn()}
       />,
     )
     fireEvent.click(container.querySelector('[data-fullscreen-theme-control] button[title="选择主题"]')!)
 
     const options = Array.from(container.querySelectorAll('#fullscreen-theme-card button')).map((button) => button.textContent)
     expect(options).toEqual(['暖色', '浅色', '深色', 'GitHub Light', '海盐蓝'])
+  })
+
+  it('keeps the file action menu open for selection and closes it on Escape', () => {
+    const onNewFile = vi.fn()
+    const onOpenFile = vi.fn()
+    const onCloseFileDrawer = vi.fn()
+    const { container } = render(
+      <FullscreenControlBar
+        fileDrawerOpen
+        onToggleFileDrawer={vi.fn()}
+        onCloseFileDrawer={onCloseFileDrawer}
+        onNewFile={onNewFile}
+        onOpenFile={onOpenFile}
+      />,
+    )
+    const plus = container.querySelector<HTMLButtonElement>('[data-fullscreen-file-menu] button[title="新建或打开文件"]')!
+    const menu = container.querySelector<HTMLElement>('#fullscreen-file-menu')!
+
+    fireEvent.click(plus)
+    expect(plus).toHaveAttribute('aria-expanded', 'true')
+    expect(menu).toHaveAttribute('aria-hidden', 'false')
+    fireEvent.click(Array.from(menu.querySelectorAll('button')).find((button) => button.textContent === '新增文件')!)
+    expect(onNewFile).toHaveBeenCalledOnce()
+    expect(onCloseFileDrawer).toHaveBeenCalledOnce()
+    expect(menu).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.click(plus)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(menu).toHaveAttribute('aria-hidden', 'true')
+    expect(onOpenFile).not.toHaveBeenCalled()
+
+    fireEvent.click(plus)
+    fireEvent.click(Array.from(menu.querySelectorAll('button')).find((button) => button.textContent === '打开文件')!)
+    expect(onOpenFile).toHaveBeenCalledOnce()
   })
 })
