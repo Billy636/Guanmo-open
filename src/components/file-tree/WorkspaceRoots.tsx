@@ -55,6 +55,14 @@ function CloseIcon() {
   )
 }
 
+function PlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
 export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
   const {
     workspaceRoots,
@@ -168,7 +176,7 @@ export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
   return (
     <div
       ref={panelRef}
-      className={searchOpen ? 'relative overflow-hidden' : 'relative space-y-2'}
+      className="relative overflow-hidden"
       style={searchPanelHeight !== null ? { height: searchPanelHeight } : undefined}
     >
       <AnimatePresence
@@ -187,8 +195,8 @@ export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
             exit={{ opacity: 0 }}
             transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
           >
-            <div className="flex items-center gap-1 px-1">
-              <div className="flex min-w-0 flex-1 items-center rounded-md border border-gm-border bg-gm-canvas px-2 focus-within:border-gm-primary">
+            <div className="flex h-6 items-center gap-0.5 px-1">
+              <div className="flex h-6 min-w-0 flex-1 items-center rounded-md border border-gm-border bg-gm-canvas px-2">
                 <input
                   autoFocus
                   type="text"
@@ -197,12 +205,12 @@ export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="搜索工作区文件"
                   aria-label="搜索工作区文件"
-                  className="min-w-0 flex-1 bg-transparent py-1 text-caption text-gm-text outline-none placeholder:text-gm-text-disabled"
+                  className="h-full min-w-0 flex-1 bg-transparent py-0 text-caption text-gm-text !outline-none placeholder:text-gm-text-disabled"
                 />
               </div>
               <span
                 aria-hidden="true"
-                className="flex h-7 w-7 shrink-0 items-center justify-center text-gm-text-secondary"
+                className="flex h-6 w-6 shrink-0 items-center justify-center text-gm-text-tertiary"
               >
                 <SearchIcon />
               </span>
@@ -211,7 +219,7 @@ export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
                 aria-label="退出搜索"
                 title="退出搜索"
                 onClick={closeSearch}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gm-text-secondary hover:bg-gm-surface-hover hover:text-gm-text"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gm-text-tertiary transition-colors hover:bg-gm-surface-hover/70 hover:text-gm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40"
               >
                 <CloseIcon />
               </button>
@@ -256,28 +264,31 @@ export function WorkspaceRoots({ onOpenFile }: WorkspaceRootsProps) {
             exit={{ opacity: 0 }}
             transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
           >
-            <div className="flex items-center justify-between gap-2 px-1">
-              <div className="flex min-w-0 items-center gap-1">
+            <div className="flex h-6 items-center justify-between gap-2 px-1">
+              <div className="flex min-w-0 items-center gap-0.5">
                 <span className="text-micro text-gm-text-tertiary">{workspaceRoots.length} 个文件夹</span>
+              </div>
+              <div className="flex items-center gap-0.5">
                 <button
                   type="button"
                   aria-label="搜索工作区"
                   title="搜索工作区"
                   onClick={openSearch}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gm-text-secondary hover:bg-gm-surface-hover hover:text-gm-text"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gm-text-tertiary transition-colors hover:bg-gm-surface-hover/70 hover:text-gm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40"
                 >
                   <SearchIcon />
                 </button>
+                <button
+                  type="button"
+                  aria-label="添加文件夹"
+                  title={!isTauri() && !browserFileSystem ? '当前浏览器不支持目录工作区' : '添加文件夹'}
+                  onClick={handleAddWorkspace}
+                  disabled={!isTauri() && !browserFileSystem}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gm-text-tertiary transition-colors hover:bg-gm-surface-hover/70 hover:text-gm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gm-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <PlusIcon />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleAddWorkspace}
-                disabled={!isTauri() && !browserFileSystem}
-                title={!isTauri() && !browserFileSystem ? '当前浏览器不支持目录工作区' : undefined}
-                className="rounded-md px-2 py-1 text-micro text-gm-text-secondary hover:bg-gm-surface-hover hover:text-gm-text disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                添加文件夹
-              </button>
             </div>
             {workspaceRoots.length === 0 ? (
               <div className="text-caption text-gm-text-tertiary text-center py-4">
