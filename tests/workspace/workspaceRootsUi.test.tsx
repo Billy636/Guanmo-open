@@ -17,7 +17,17 @@ vi.mock('@/hooks/useWorkspaceFileTree', () => ({
       { id: 'root-c', path: 'F:/Personal', name: 'Personal' },
     ],
     workspaceTrees: {
-      'root-a': { nodes: [{ name: 'a.md', path: 'D:/Notes/a.md', type: 'file' }], hiddenCount: 4, loading: false, error: null },
+      'root-a': {
+        nodes: [
+          { name: 'a.md', path: 'D:/Notes/a.md', type: 'file' },
+          { name: 'Guides', path: 'D:/Notes/Guides', type: 'directory', children: [
+            { name: 'archive.md', path: 'D:/Notes/Guides/archive.md', type: 'file' },
+          ] },
+        ],
+        hiddenCount: 4,
+        loading: false,
+        error: null,
+      },
       'root-b': { nodes: [{ name: 'b.md', path: 'E:/Study/b.md', type: 'file' }], hiddenCount: 0, loading: false, error: null },
       'root-c': { nodes: [{ name: 'c.md', path: 'F:/Personal/c.md', type: 'file' }], hiddenCount: 0, loading: false, error: null },
     },
@@ -46,7 +56,7 @@ describe('WorkspaceRoots', () => {
   it('renders three roots and collapses them independently', () => {
     render(<WorkspaceRoots onOpenFile={vi.fn()} />)
 
-    expect(screen.getByText('共打开 3 个文件夹')).toBeInTheDocument()
+    expect(screen.getByText('3 个文件夹')).toBeInTheDocument()
     expect(screen.getByTestId('tree-D:/Notes')).toBeInTheDocument()
     expect(screen.getByTestId('tree-E:/Study')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '折叠 Study' }))
@@ -74,5 +84,28 @@ describe('WorkspaceRoots', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '添加文件夹' }))
     await waitFor(() => expect(mocks.addWorkspaceRoot).toHaveBeenCalledWith('G:/Archive'))
+  })
+
+  it('searches loaded workspace filenames and opens a result', async () => {
+    const onOpenFile = vi.fn()
+    render(<WorkspaceRoots onOpenFile={onOpenFile} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '搜索工作区' }))
+    const input = await screen.findByRole('searchbox', { name: '搜索工作区文件' })
+    fireEvent.change(input, { target: { value: 'a' } })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /a\.md/ })).toBeInTheDocument())
+    expect(screen.getByText('Notes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /a\.md/ }))
+    expect(onOpenFile).toHaveBeenCalledWith('D:/Notes/a.md')
+
+    fireEvent.change(input, { target: { value: 'archive' } })
+    const nestedResult = await screen.findByRole('button', { name: /archive\.md/ })
+    expect(screen.getByText('Notes / Guides')).toBeInTheDocument()
+    fireEvent.click(nestedResult)
+    expect(onOpenFile).toHaveBeenCalledWith('D:/Notes/Guides/archive.md')
+
+    fireEvent.click(screen.getByRole('button', { name: '退出搜索' }))
+    expect(await screen.findByText('3 个文件夹')).toBeInTheDocument()
   })
 })
