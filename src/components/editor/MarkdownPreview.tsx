@@ -380,6 +380,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   isVisible = true,
   onFirstVisible,
   onRenderComplete,
+  onPositionIntent,
   resource = 'preview',
   readingMarks = [],
   onCreateReadingMark,
@@ -1597,10 +1598,15 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       return getSourceOffsetForLine(model, line)
     },
     scrollToLine(line: number) {
+      onPositionIntent?.()
       cancelPendingAnchorRestore()
       scrollToLineInternal(line)
     },
-    revealSourceLines: revealSourceLinesInternal,
+    revealSourceLines(request) {
+      const applied = revealSourceLinesInternal(request)
+      if (applied) onPositionIntent?.()
+      return applied
+    },
     scrollToOffset(offset: number) {
       cancelPendingAnchorRestore()
       cancelProgrammaticScroll()
@@ -1609,6 +1615,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       if (!block) return
       const container = scrollContainerRef.current
       if (!container) return
+      onPositionIntent?.()
       const match = searchMatchesByBlockRef.current?.get(block.blockId)?.find((item) => item.from === offset)
       const to = match?.to ?? Math.min(block.endOffset, offset + 1)
       const element = blockRefs.current.get(index)
@@ -1664,8 +1671,12 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
       selectionAnchorRef.current = null
       applySelection(null)
     },
-    navigateToReadingMark: navigateToReadingMarkInternal,
-  }), [cancelProgrammaticScroll, cancelPendingAnchorRestore, model, estimateBlockHeight, requiresWholeDocumentRender, scrollToLineInternal, revealSourceLinesInternal, setSearchStateImpl, applySelection, navigateToReadingMarkInternal])
+    navigateToReadingMark(markId: string) {
+      const applied = navigateToReadingMarkInternal(markId)
+      if (applied) onPositionIntent?.()
+      return applied
+    },
+  }), [cancelProgrammaticScroll, cancelPendingAnchorRestore, model, estimateBlockHeight, requiresWholeDocumentRender, scrollToLineInternal, revealSourceLinesInternal, setSearchStateImpl, applySelection, navigateToReadingMarkInternal, onPositionIntent])
 
   // Visible range
   const visible = useMemo(

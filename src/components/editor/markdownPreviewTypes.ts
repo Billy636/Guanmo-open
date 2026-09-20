@@ -79,6 +79,7 @@ export interface MarkdownPreviewProps {
   isVisible?: boolean
   onFirstVisible?: () => void
   onRenderComplete?: () => void
+  onPositionIntent?: () => void
   resource?: 'preview' | 'left-preview' | 'right-preview'
   readingMarks?: ReadingMark[]
   onCreateReadingMark?: (selection: PreviewSelectionSnapshot, color: ReadingMarkColor, note: string | undefined, model: MarkdownPreviewModel) => Promise<CreateReadingMarkResult>

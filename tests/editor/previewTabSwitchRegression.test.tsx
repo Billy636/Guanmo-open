@@ -734,6 +734,42 @@ describe('preview visibility regression: restoredPreviewKeysRef race', () => {
   })
 
   describe('tab switch in preview mode', () => {
+    it('does not replace a restored position with a later layout scroll before user input', async () => {
+      const content = '# 文档 A\n\n' + '正文 A\n\n'.repeat(100)
+      setupEditor([anonymousTab('tab-a', content), anonymousTab('tab-b', '# 文档 B')], 'tab-a', 'preview')
+      useEditorStore.setState({ readingPositions: { 'tab-a': { previewScrollTop: 400, topLine: 25 } } })
+      const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 })
+      try {
+        const { container } = render(<EditorArea />)
+        await settleLazyEditorModules()
+        act(() => vi.advanceTimersByTime(300))
+
+        const preview = getLeftPreviewContainer(container)!
+        act(() => {
+          fireEvent.pointerDown(preview, { pointerType: 'mouse', clientX: 100 })
+          preview.scrollTop = 64
+          fireEvent.scroll(preview)
+          useEditorStore.getState().setActiveTab('tab-b')
+        })
+        expect(useEditorStore.getState().readingPositions['tab-a']?.previewScrollTop).toBe(400)
+
+        act(() => useEditorStore.getState().setActiveTab('tab-a'))
+        act(() => vi.advanceTimersByTime(300))
+        const restored = getLeftPreviewContainer(container)!
+        act(() => {
+          fireEvent.wheel(restored, { deltaY: 120 })
+          restored.scrollTop = 520
+          fireEvent.scroll(restored)
+          useEditorStore.getState().setActiveTab('tab-b')
+        })
+        expect(useEditorStore.getState().readingPositions['tab-a']?.previewScrollTop).toBe(520)
+      } finally {
+        if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight)
+        else Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
+      }
+    })
+
     it('keeps a restored preview hidden until its line correction finishes', async () => {
       const content = Array.from({ length: 80 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}`).join('\n\n')
       setupEditor([anonymousTab('tab-a', content), anonymousTab('tab-b', content)], 'tab-a', 'preview')

@@ -262,6 +262,17 @@ export function useReadingPositionBridge({
     setPreviewRestoreTick((tick) => tick + 1)
   }, [clearPreviewSwitching, setPreviewRestoreTick])
 
+  const allowPreviewPositionUpdates = useCallback((tabId: string | null | undefined, pane: 'left' | 'right') => {
+    if (!tabId || restoringPreviewTabsRef.current[pane] !== tabId) return
+    if (previewRestoreFramesRef.current[pane] !== null) {
+      window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
+      previewRestoreFramesRef.current[pane] = null
+    }
+    restoringPreviewTabsRef.current[pane] = null
+    restoredPreviewKeysRef.current[pane] = tabId
+    schedulePreviewReveal(tabId)
+  }, [restoredPreviewKeysRef, schedulePreviewReveal])
+
   useLayoutEffect(() => {
     const previousViewMode = previousViewModeRef.current
     previousViewModeRef.current = viewMode
@@ -313,7 +324,8 @@ export function useReadingPositionBridge({
       window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
       previewRestoreFramesRef.current[pane] = null
     }
-    restoringPreviewTabsRef.current[pane] = null
+    restoringPreviewTabsRef.current[pane] = typeof position?.previewScrollTop === 'number'
+      || typeof position?.topLine === 'number' ? tabId : null
     const previewHandle = pane === 'left' ? leftMarkdownPreviewRef.current : rightMarkdownPreviewRef.current
     const lineTop = position?.previewScrollTop == null && position?.topLine != null
       ? getPreviewTopForLine(container, position.topLine, previewHandle?.getTopForLine(position.topLine))
@@ -324,7 +336,6 @@ export function useReadingPositionBridge({
       container.scrollTop = nextTop
     })
     const reveal = () => {
-      restoringPreviewTabsRef.current[pane] = null
       restoredPreviewKeysRef.current[pane] = tabId
       schedulePreviewReveal(tabId)
     }
@@ -333,7 +344,6 @@ export function useReadingPositionBridge({
       return
     }
     // A remounted virtual preview starts with estimated block heights; align its saved line after measurement.
-    restoringPreviewTabsRef.current[pane] = tabId
     let attempts = 0
     let stableFrames = 0
     const alignToLine = () => {
@@ -468,6 +478,7 @@ export function useReadingPositionBridge({
     getStoredEditorTop,
     saveEditorPositionForTab,
     savePreviewReadingPosition,
+    allowPreviewPositionUpdates,
     scheduleFlush,
     restoreEditorReadingPosition,
     restorePreviewReadingPosition,

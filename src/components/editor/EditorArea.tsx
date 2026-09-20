@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { EditorView } from '@codemirror/view'
 import { useAppStore } from '@/stores/appStore'
 import { useEditorStore, type ViewMode } from '@/stores/editorStore'
@@ -48,6 +48,17 @@ const LazyMarkdownDiffView = lazy(() => import('./MarkdownDiffView').then(({ Mar
 
 function PreviewSuspenseFallback() {
   return <div className="h-full min-h-0 w-full bg-gm-surface" aria-hidden="true" />
+}
+
+function isPreviewScrollPointer(event: PointerEvent<HTMLDivElement>) {
+  const rect = event.currentTarget.getBoundingClientRect()
+  return event.pointerType === 'touch' || event.pointerType === 'pen'
+    || (event.target === event.currentTarget
+      && rect.width > 0 && event.clientX >= rect.right - 18)
+}
+
+function isPreviewScrollKey(key: string) {
+  return ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(key)
 }
 
 /** 编辑器被动平滑跟随状态（预览滚动驱动编辑器）。独立于源端 scroll 事件节流 ref。 */
@@ -537,10 +548,17 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     getStoredEditorTop,
     saveEditorPositionForTab,
     savePreviewReadingPosition,
+    allowPreviewPositionUpdates,
     scheduleFlush,
     restoreEditorReadingPosition,
     restorePreviewReadingPosition,
   } = readingPositionBridge
+  const allowLeftPreviewPositionUpdates = useCallback(() => {
+    allowPreviewPositionUpdates(activeTab?.id, 'left')
+  }, [activeTab?.id, allowPreviewPositionUpdates])
+  const allowRightPreviewPositionUpdates = useCallback(() => {
+    allowPreviewPositionUpdates(rightTab?.id, 'right')
+  }, [rightTab?.id, allowPreviewPositionUpdates])
   const leftInitialPreviewPosition = getStoredPreviewPosition(activeTab?.id, 'left')
   const rightInitialPreviewPosition = getStoredPreviewPosition(rightTab?.id, 'right')
   const previewSelectionBridge = usePreviewSelectionBridge({
@@ -1667,6 +1685,14 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
                 style={{ overflowAnchor: 'none', ...(leftPreviewMasked ? { visibility: 'hidden' } : {}) }}
                 aria-hidden={!leftPreviewVisible}
                 onScroll={handleLeftPreviewScroll}
+                onWheelCapture={allowLeftPreviewPositionUpdates}
+                onPointerDownCapture={(event) => {
+                  if (isPreviewScrollPointer(event)) allowLeftPreviewPositionUpdates()
+                }}
+                onTouchStartCapture={allowLeftPreviewPositionUpdates}
+                onKeyDownCapture={(event) => {
+                  if (isPreviewScrollKey(event.key)) allowLeftPreviewPositionUpdates()
+                }}
                 onContextMenu={(e) => handlePreviewContextMenu(e, 'left')}
               >
                 {viewMode === 'dual-preview' && <PaneHeader title={activeTab?.title || ''} />}
@@ -1698,6 +1724,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
                       }
                     }}
                     onRenderComplete={handlePreviewRenderComplete}
+                    onPositionIntent={allowLeftPreviewPositionUpdates}
                     resource="left-preview"
                     readingMarks={activeReadingMarks}
                     onCreateReadingMark={readingMarksEnabled ? handleCreateReadingMark : undefined}
@@ -1717,6 +1744,14 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
               style={{ overflowAnchor: 'none', ...(rightPreviewMasked ? { visibility: 'hidden' } : {}) }}
               aria-hidden={viewMode !== 'dual-preview'}
               onScroll={handleRightPreviewScroll}
+              onWheelCapture={allowRightPreviewPositionUpdates}
+              onPointerDownCapture={(event) => {
+                if (isPreviewScrollPointer(event)) allowRightPreviewPositionUpdates()
+              }}
+              onTouchStartCapture={allowRightPreviewPositionUpdates}
+              onKeyDownCapture={(event) => {
+                if (isPreviewScrollKey(event.key)) allowRightPreviewPositionUpdates()
+              }}
               onDragOver={handleRightPaneDragOver}
               onDragLeave={handleRightPaneDragLeave}
               onDrop={handleRightPaneDrop}
@@ -1753,6 +1788,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
                     initialScrollTop={rightInitialPreviewPosition?.previewScrollTop}
                     initialTopLine={rightInitialPreviewPosition?.topLine}
                     isVisible={viewMode === 'dual-preview'}
+                    onPositionIntent={allowRightPreviewPositionUpdates}
                     resource="right-preview"
                     readingMarks={rightReadingMarks}
                     onCreateReadingMark={readingMarksEnabled ? handleCreateRightReadingMark : undefined}
