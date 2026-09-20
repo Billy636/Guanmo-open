@@ -8,14 +8,14 @@
  *    预览内编辑、scrollToOffset 保持同一坐标系）。
  * 2. DOM ↔ 源码 offset 的映射通过渲染时注入的 `<span data-gm-src-from/to>`
  *    标注实现（数据来自 mdast/HAST 节点的 position），不做文本长度推测。
- * 3. KaTeX / 代码高亮 / Mermaid 等渲染后子树不携带精确 text position 的区域
- *    不注入标注（避免错位映射）；该区域选区/高亮降级为不可字符级接管，
+ * 3. KaTeX / Mermaid / ECharts 等渲染后无法可靠对应字符位置的区域不注入标注；
+ *    普通语法高亮代码块依据模型 textSegments 恢复 token 映射，校验失败时降级，
  *    模型层 getTextForSourceRange 仍基于 textSegments 精确提取。
  * 4. 高亮视觉统一走 CSS Highlight API，按 (resource, blockId) 注册与注销，
  *    虚拟块卸载时仅移除对应 DOM Range，文档级状态不丢失。
  */
 
-import { buildSourceTextBoundaries, findBlockIndexByOffset, type MarkdownPreviewModel } from '@/services/markdownPreviewModel'
+import { buildSourceTextBoundaries, findBlockIndexByOffset, type MarkdownPreviewModel, type PreviewTextSegment } from '@/services/markdownPreviewModel'
 
 function alignTextOffsetToCodePointStart(text: string, offset: number): number {
   if (
@@ -165,10 +165,54 @@ interface AnnotatableHastNode {
   }
 }
 
+interface CodeTextLeaf {
+  node: AnnotatableHastNode
+  parent: AnnotatableHastNode
+  index: number
+}
+
+interface CodeDisplaySegment {
+  segment: PreviewTextSegment
+  displayFrom: number
+  displayTo: number
+}
+
+function normalizeCodeDisplaySegment(segment: PreviewTextSegment): PreviewTextSegment {
+  if (!segment.text.includes('\r')) return segment
+  const boundaries = [segment.from]
+  let sourceOffset = 0
+  let textOffset = 0
+  while (sourceOffset < segment.text.length) {
+    if (segment.text.startsWith('\r\n', sourceOffset)) {
+      boundaries.push(segment.from + sourceOffset + 2)
+      sourceOffset += 2
+      textOffset += 1
+      continue
+    }
+    if (segment.text[sourceOffset] === '\r') {
+      boundaries.push(segment.from + sourceOffset + 1)
+      sourceOffset += 1
+      textOffset += 1
+      continue
+    }
+    const codePoint = segment.text.codePointAt(sourceOffset)
+    if (codePoint === undefined) break
+    const length = String.fromCodePoint(codePoint).length
+    for (let unit = 1; unit <= length; unit += 1) {
+      boundaries.push(segment.from + sourceOffset + unit)
+    }
+    sourceOffset += length
+    textOffset += length
+  }
+  const text = segment.text.replace(/\r\n?/g, '\n')
+  if (boundaries.length !== textOffset + 1 || textOffset !== text.length) return segment
+  return { ...segment, text, to: boundaries[boundaries.length - 1], sourceBoundaries: boundaries }
+}
+
 /**
  * rehype 插件工厂：把 HAST text 节点包裹为带源码 offset 的 span。
- * 只标注携带精确源码 position 的 text 节点；KaTeX / rehype-highlight 等
- * 重建的无 position 子树不标注（避免错位映射），该区域选区/高亮降级。
+ * 普通语法高亮代码块可借助调用方传入的模型 textSegments 恢复 token 映射；
+ * KaTeX / Mermaid / ECharts 等无法可靠对应源码的重建子树仍不猜测 offset，降级处理。
  * baseOffset 为该块渲染切片在全文中的起始 offset（整篇渲染传 0）。
  */
 function resolveInlineCodeValueRange(
@@ -193,10 +237,130 @@ function resolveInlineCodeValueRange(
   return { from: boundaries[0], to: boundaries[boundaries.length - 1] }
 }
 
-export function createSourceOffsetAnnotator(baseOffset: number, source?: string) {
+function collectCodeTextLeaves(node: AnnotatableHastNode, out: CodeTextLeaf[]): void {
+  for (let index = 0; index < (node.children?.length ?? 0); index += 1) {
+    const child = node.children![index]
+    if (child.type === 'text' && typeof child.value === 'string' && child.value) {
+      out.push({ node: child, parent: node, index })
+      continue
+    }
+    if (child.type === 'element') collectCodeTextLeaves(child, out)
+  }
+}
+
+function hasUnpositionedCodeText(node: AnnotatableHastNode): boolean {
+  if (node.type === 'text') return typeof node.value === 'string' && node.value.length > 0 && !node.position
+  return (node.children ?? []).some((child) => hasUnpositionedCodeText(child))
+}
+
+function createCodeTextMapping(
+  node: AnnotatableHastNode,
+  baseOffset: number,
+  sourceSegments: PreviewTextSegment[],
+): boolean {
+  const positionFrom = node.position?.start?.offset
+  const positionTo = node.position?.end?.offset
+  if (typeof positionFrom !== 'number' || typeof positionTo !== 'number' || positionTo <= positionFrom) return false
+
+  const globalFrom = baseOffset + positionFrom
+  const globalTo = baseOffset + positionTo
+  let low = 0
+  let high = sourceSegments.length
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (sourceSegments[middle].to <= globalFrom) low = middle + 1
+    else high = middle
+  }
+  const segments: PreviewTextSegment[] = []
+  for (let index = low; index < sourceSegments.length; index += 1) {
+    const segment = sourceSegments[index]
+    if (segment.from >= globalTo) break
+    if (segment.from >= globalFrom && segment.to <= globalTo && segment.to > segment.from && segment.text.length > 0) {
+      segments.push(normalizeCodeDisplaySegment(segment))
+    }
+  }
+  if (segments.length === 0) return false
+
+  const displaySegments: CodeDisplaySegment[] = []
+  let displayCursor = 0
+  for (const segment of segments) {
+    const displayFrom = displayCursor
+    displayCursor += segment.text.length
+    displaySegments.push({ segment, displayFrom, displayTo: displayCursor })
+  }
+
+  const leaves: CodeTextLeaf[] = []
+  collectCodeTextLeaves(node, leaves)
+  if (leaves.length === 0) return false
+  const visible = leaves.map(({ node: leaf }) => leaf.value ?? '').join('')
+  const expected = displaySegments.map(({ segment }) => segment.text).join('')
+  if (visible !== expected && visible !== `${expected}\n`) return false
+
+  const plans: Array<{ parent: AnnotatableHastNode; index: number; replacement: AnnotatableHastNode[] }> = []
+  let leafCursor = 0
+  let segmentIndex = 0
+  for (const leaf of leaves) {
+    const value = leaf.node.value ?? ''
+    const leafEnd = leafCursor + value.length
+    const replacement: AnnotatableHastNode[] = []
+    let cursor = leafCursor
+    while (cursor < leafEnd) {
+      const segment = displaySegments[segmentIndex]
+      if (!segment) {
+        replacement.push({ type: 'text', value: value.slice(cursor - leafCursor) })
+        cursor = leafEnd
+        break
+      }
+      if (cursor >= segment.displayTo) {
+        segmentIndex += 1
+        continue
+      }
+      if (cursor < segment.displayFrom) return false
+      const fragmentEnd = Math.min(leafEnd, segment.displayTo)
+      const localStart = cursor - segment.displayFrom
+      const localEnd = fragmentEnd - segment.displayFrom
+      const boundaries = segment.segment.sourceBoundaries
+        ? segment.segment.sourceBoundaries.slice(localStart, localEnd + 1)
+        : undefined
+      if (boundaries && boundaries.length !== localEnd - localStart + 1) return false
+      const sourceFrom = boundaries?.[0] ?? segment.segment.from + localStart
+      const sourceTo = boundaries?.[boundaries.length - 1] ?? segment.segment.from + localEnd
+      replacement.push({
+        type: 'element',
+        tagName: 'span',
+        properties: {
+          dataGmSrcFrom: sourceFrom,
+          dataGmSrcTo: sourceTo,
+          ...(boundaries ? { dataGmSrcMap: JSON.stringify(boundaries) } : {}),
+        },
+        children: [{ type: 'text', value: value.slice(cursor - leafCursor, fragmentEnd - leafCursor) }],
+      })
+      cursor = fragmentEnd
+      if (cursor >= segment.displayTo) segmentIndex += 1
+    }
+    plans.push({ parent: leaf.parent, index: leaf.index, replacement })
+    leafCursor = leafEnd
+  }
+
+  for (const plan of plans) {
+    plan.parent.children!.splice(plan.index, 1, ...plan.replacement)
+    const insertedCount = plan.replacement.length - 1
+    if (insertedCount !== 0) {
+      for (const later of plans) {
+        if (later.parent === plan.parent && later.index > plan.index) later.index += insertedCount
+      }
+    }
+  }
+  return true
+}
+
+export function createSourceOffsetAnnotator(baseOffset: number, source?: string, sourceSegments?: PreviewTextSegment[]) {
   return function annotator() {
     return function transform(tree: AnnotatableHastNode) {
       const visit = (node: AnnotatableHastNode): void => {
+        if (node.tagName === 'code' && sourceSegments && hasUnpositionedCodeText(node)) {
+          if (createCodeTextMapping(node, baseOffset, sourceSegments)) return
+        }
         if (!node.children || node.children.length === 0) return
         for (let i = 0; i < node.children.length; i += 1) {
           const child = node.children[i]

@@ -88,6 +88,80 @@ describe('previewHighlight 统一 DocumentRange 基础设施', () => {
     expect(tree.children[1].type).toBe('text')
   })
 
+  it('代码块语法高亮 token：使用模型 textSegments 恢复源码映射', () => {
+    const source = '```ts\r\nconst 😀 = 1\r\nreturn 2\r\n```'
+    const model = createMarkdownPreviewModel(source)
+    const block = model.blocks.find((item) => item.type === 'code')
+    if (!block) throw new Error('代码块解析失败')
+    const tree = {
+      type: 'element',
+      tagName: 'code',
+      position: { start: { offset: 0 }, end: { offset: source.length } },
+      children: [
+        { type: 'element', tagName: 'span', properties: { className: ['hljs-keyword'] }, children: [{ type: 'text', value: 'const' }] },
+        { type: 'text', value: ' ' },
+        { type: 'element', tagName: 'span', properties: { className: ['hljs-variable'] }, children: [{ type: 'text', value: '😀' }] },
+        { type: 'text', value: ' = 1\n' },
+        { type: 'element', tagName: 'span', properties: { className: ['hljs-keyword'] }, children: [{ type: 'text', value: 'return' }] },
+        { type: 'text', value: ' 2\n' },
+      ],
+    }
+    const transform = (createSourceOffsetAnnotator(0, source, block.textSegments) as any)()
+    transform(tree)
+
+    const container = document.createElement('div')
+    renderAnnotated(container, tree)
+    document.body.appendChild(container)
+    const annotated = collectAnnotatedTextNodes(container)
+    expect(annotated.map((entry) => entry.node.textContent)).toEqual(['const', ' ', '😀', ' = 1\n', 'return', ' 2'])
+    const emoji = annotated.find((entry) => entry.node.textContent === '😀')
+    expect(emoji?.from).toBe(source.indexOf('😀'))
+    expect(emoji?.to).toBe(source.indexOf('😀') + 2)
+    const returnEntry = annotated.find((entry) => entry.node.textContent === 'return')
+    expect(returnEntry?.from).toBe(source.indexOf('return'))
+    expect(buildDomRangesForSourceRange(container, source.indexOf('😀'), source.indexOf('😀') + 2)).toHaveLength(1)
+    document.body.removeChild(container)
+  })
+
+  it('代码块可见文本失配时不猜测源码 offset', () => {
+    const source = '```ts\nconst x\n```'
+    const model = createMarkdownPreviewModel(source)
+    const block = model.blocks.find((item) => item.type === 'code')
+    if (!block) throw new Error('代码块解析失败')
+    const tree = {
+      type: 'element',
+      tagName: 'code',
+      position: { start: { offset: 0 }, end: { offset: source.length } },
+      children: [{ type: 'text', value: 'const y\n' }],
+    }
+    const transform = (createSourceOffsetAnnotator(0, source, block.textSegments) as any)()
+    transform(tree)
+    expect(JSON.stringify(tree)).not.toContain('dataGmSrcFrom')
+  })
+
+  it('缩进代码块：去除缩进后仍映射 Tab 与多行源码位置', () => {
+    const source = '    const\t值 = 1\n    return 值\n'
+    const model = createMarkdownPreviewModel(source)
+    const block = model.blocks.find((item) => item.type === 'code')
+    if (!block) throw new Error('缩进代码块解析失败')
+    const tree = {
+      type: 'element',
+      tagName: 'code',
+      position: { start: { offset: 0 }, end: { offset: source.length } },
+      children: [{ type: 'text', value: 'const\t值 = 1\nreturn 值\n' }],
+    }
+    const transform = (createSourceOffsetAnnotator(0, source, block.textSegments) as any)()
+    transform(tree)
+    const container = document.createElement('div')
+    renderAnnotated(container, tree)
+    document.body.appendChild(container)
+    const annotated = collectAnnotatedTextNodes(container)
+    expect(annotated.map((entry) => entry.node.textContent).join('')).toBe('const\t值 = 1\nreturn 值')
+    expect(annotated[0].from).toBe(source.indexOf('const'))
+    expect(annotated.at(-1)?.to).toBe(source.lastIndexOf('值') + 1)
+    document.body.removeChild(container)
+  })
+
   it('DOM ↔ 源码 offset：domPointToSourceOffset 与 buildDomRangesForSourceRange 一致', () => {
     const container = document.createElement('div')
     const tree = {

@@ -14,6 +14,7 @@ import type { MarkdownPreviewHandle } from '@/components/editor/markdownPreviewT
 const content = '第一段批注目标。第二段批注目标。'
 const documentPath = 'C:/temp/批注测试.md'
 const emptyReadingMarks: ReadingMark[] = []
+const codeContent = '```ts\nconst target = 1\nreturn target\n```'
 
 function makeRect(top: number, left = 0, width = 120, height = 20) {
   return { top, right: left + width, bottom: top + height, left, width, height, x: left, y: top, toJSON: () => ({}) } as DOMRect
@@ -38,6 +39,33 @@ function makeMark(id: string, quote: string, note: string, color: ReadingMark['c
     documentId: readingDocumentId(documentPath),
     documentPath,
     type: 'annotation',
+    anchor,
+    color,
+    note,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+}
+
+function makeCodeMark(id: string, quote: string, note = '', color: ReadingMark['color'] = 'yellow'): ReadingMark {
+  const model = createMarkdownPreviewModel(codeContent)
+  const from = codeContent.indexOf(quote)
+  const to = from + quote.length
+  const info = buildDocumentRangeInfo(model, from, to)
+  if (!info) throw new Error('code range missing')
+  const anchor = createReadingMarkAnchor(model, {
+    range: info.range,
+    from,
+    to,
+    text: getTextForSourceRange(model, from, to),
+    startLine: 2,
+    endLine: 2,
+  })
+  return {
+    id,
+    documentId: readingDocumentId(documentPath),
+    documentPath,
+    type: 'highlight',
     anchor,
     color,
     note,
@@ -269,6 +297,65 @@ describe('MarkdownPreview 批注浮层', () => {
     expect(toolbar!.querySelector('.gm-reading-mark-toolbar-actions')?.className).toContain('is-expanded')
     fireEvent.blur(trigger, { relatedTarget: document.body })
     expect(toolbar!.querySelector('.gm-reading-mark-toolbar-actions')?.className).not.toContain('is-expanded')
+  })
+
+  it('纯代码块选区可转换为稳定快照并显示批注入口', async () => {
+    const caretRangeFromPoint = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+    caretRangeFromPoint.caretRangeFromPoint = (x) => {
+      const textNode = host?.querySelector('code span[data-gm-src-from]')?.firstChild
+      if (!textNode) return null
+      const range = document.createRange()
+      const offset = x < 50 ? 0 : (textNode.textContent?.length ?? 0)
+      range.setStart(textNode, offset)
+      range.setEnd(textNode, offset)
+      return range
+    }
+    const previewRef = { current: null } as MutableRefObject<MarkdownPreviewHandle | null>
+    render(<MarkdownPreview ref={previewRef} content={codeContent} documentKey="doc-code-selection" documentVersion={1} filePath={documentPath} onCreateReadingMark={vi.fn()} />, { container: host! })
+
+    const block = host!.querySelector<HTMLElement>('[data-md-block-index]')
+    expect(block).not.toBeNull()
+    fireEvent.mouseDown(block!, { button: 0, clientX: 4, clientY: 110 })
+    fireEvent.mouseUp(document, { button: 0, clientX: 120, clientY: 110 })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加批注' })).toBeInTheDocument())
+    expect(previewRef.current?.getSelection()?.text).toBe('const')
+  })
+
+  it('已有代码批注可在语法高亮 token 内恢复命中区域', async () => {
+    render(<MarkdownPreview content={codeContent} documentKey="doc-code-existing" documentVersion={1} filePath={documentPath} readingMarks={[makeCodeMark('code-existing', 'target')]} />, { container: host! })
+
+    await waitFor(() => expect(host!.querySelector('[data-gm-reading-mark-id="code-existing"]')).not.toBeNull())
+    expect(host!.querySelector('code.hljs')).not.toBeNull()
+  })
+
+  it('正文到代码块的跨块选区仍显示批注入口', async () => {
+    const mixedContent = '正文目标\n\n```ts\nconst target = 1\n```\n\n尾部'
+    const caretRangeFromPoint = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+    caretRangeFromPoint.caretRangeFromPoint = (x, y) => {
+      const codeSpans = host?.querySelectorAll('code span[data-gm-src-from]')
+      const target = y < 150
+        ? host?.querySelector('p span[data-gm-src-from]')
+        : codeSpans?.[codeSpans.length - 1]
+      const textNode = target?.firstChild
+      if (!textNode) return null
+      const range = document.createRange()
+      const offset = x < 50 ? 0 : (textNode.textContent?.length ?? 0)
+      range.setStart(textNode, offset)
+      range.setEnd(textNode, offset)
+      return range
+    }
+    const previewRef = { current: null } as MutableRefObject<MarkdownPreviewHandle | null>
+    render(<MarkdownPreview ref={previewRef} content={mixedContent} documentKey="doc-code-cross-block" documentVersion={1} filePath={documentPath} onCreateReadingMark={vi.fn()} />, { container: host! })
+
+    const paragraph = host!.querySelector<HTMLElement>('[data-md-block-index]')
+    expect(paragraph).not.toBeNull()
+    fireEvent.mouseDown(paragraph!, { button: 0, clientX: 4, clientY: 110 })
+    fireEvent.mouseUp(document, { button: 0, clientX: 120, clientY: 210 })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加批注' })).toBeInTheDocument())
+    expect(previewRef.current?.getSelection()?.text).toContain('正文目标')
+    expect(previewRef.current?.getSelection()?.text).toContain('const target')
   })
 
   it('行尾落在空白且该点无法映射时，仍以最后可映射位置完成批注选区', async () => {

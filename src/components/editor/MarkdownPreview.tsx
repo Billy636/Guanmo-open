@@ -339,10 +339,10 @@ const StableMarkdownBlock = memo(function StableMarkdownBlock({
   const blockRehypePlugins = useMemo(
     () => [
       ...(rehypePlugins ?? []),
-      createSourceOffsetAnnotator(block.startOffset, contentProps.markdown),
+      createSourceOffsetAnnotator(block.startOffset, contentProps.markdown, block.textSegments),
       createReadingMarkHitRegionAnnotator(readingMarkRanges ?? []),
     ],
-    [contentProps.markdown, readingMarkRanges, rehypePlugins, block.startOffset],
+    [block.textSegments, contentProps.markdown, readingMarkRanges, rehypePlugins, block.startOffset],
   )
 
   return (
@@ -2340,7 +2340,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   const wholeDocumentRehypePlugins = useMemo(
     () => [
       ...rehypePlugins,
-      createSourceOffsetAnnotator(0, normalizedContent),
+      createSourceOffsetAnnotator(0, normalizedContent, model.blocks.flatMap((block) => block.textSegments)),
       createReadingMarkHitRegionAnnotator(readingMarkHitRanges),
       createMarkdownBlockWrapperPlugin(model.blocks),
     ],

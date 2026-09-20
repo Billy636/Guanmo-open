@@ -90,7 +90,7 @@ UI 展示顺序、标签栏渲染、预览切换掩码 `previewSwitchingTabId`�
 ### Forbidden Dependencies
 
 - 业务逻辑不得从 DOM 反推源码 offset；DOM → 源码只能走渲染时注入的 `data-gm-src-from/to` 标注（`createSourceOffsetAnnotator`）。
-- KaTeX / 代码高亮 / Mermaid 等无精确 position 的子树不得被标注；该区域选区/高亮降级为原生行为，不得强行推测映射。
+- KaTeX / Mermaid / ECharts 等转换后没有可靠字符位置的子树不得被标注；普通语法高亮代码块可在高亮 token 重建后依据完整模型 `textSegments` 恢复精确映射，校验失败时仍降级为原生行为，不得猜测 offset。
 
 ### Invariants
 
