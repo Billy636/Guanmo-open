@@ -3186,6 +3186,27 @@ function getBlockOffsetForLine(block: PreviewBlock, clickedLine: number): number
   return offset
 }
 
+function resolveMermaidColor(value: string): string {
+  if (!value.includes('(') || typeof document === 'undefined') return value
+
+  const probe = document.createElement('span')
+  probe.style.color = value
+  if (!probe.style.color) return value
+  document.body.appendChild(probe)
+  const resolved = getComputedStyle(probe).color.trim()
+  probe.remove()
+
+  const srgb = resolved.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)$/i)
+  if (srgb) {
+    const [, red, green, blue, alpha] = srgb
+    const channels = [red, green, blue].map((channel) => Math.round(Number(channel) * 255))
+    return alpha === undefined
+      ? `rgb(${channels.join(', ')})`
+      : `rgba(${channels.join(', ')}, ${alpha})`
+  }
+  return resolved || value
+}
+
 function MermaidBlock({ code, startLine, endLine }: { code: string; startLine?: number; endLine?: number }) {
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -3197,7 +3218,7 @@ function MermaidBlock({ code, startLine, endLine }: { code: string; startLine?: 
       try {
         const mermaid = (await import('mermaid')).default
         const styles = getComputedStyle(document.documentElement)
-        const token = (name: string) => styles.getPropertyValue(name).trim()
+        const token = (name: string) => resolveMermaidColor(styles.getPropertyValue(name).trim())
         mermaid.initialize({
           startOnLoad: false,
           theme: 'base',
