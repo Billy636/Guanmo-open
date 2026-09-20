@@ -734,6 +734,23 @@ describe('preview visibility regression: restoredPreviewKeysRef race', () => {
   })
 
   describe('tab switch in preview mode', () => {
+    it('uses a measured line target on the first preview-to-editor switch', async () => {
+      const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 行`).join('\n')
+      setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview', { modePerformancePolicy: 'memory' })
+      useEditorStore.setState({ readingPositions: { 'tab-a': { previewScrollTop: 900, topLine: 80 } } })
+      const { container } = render(<EditorArea />)
+      await settleLazyEditorModules()
+      act(() => vi.advanceTimersByTime(50))
+
+      expect(container.querySelector('.cm-editor')).toBeNull()
+      const scrollIntoViewSpy = vi.spyOn(EditorView, 'scrollIntoView')
+      act(() => useEditorStore.getState().setViewMode('edit'))
+      act(() => vi.advanceTimersByTime(50))
+
+      const target = content.split('\n').slice(0, 79).join('\n').length + 1
+      expect(scrollIntoViewSpy).toHaveBeenCalledWith(target, { y: 'start', yMargin: 32 })
+    })
+
     it('does not replace a restored position with a later layout scroll before user input', async () => {
       const content = '# 文档 A\n\n' + '正文 A\n\n'.repeat(100)
       setupEditor([anonymousTab('tab-a', content), anonymousTab('tab-b', '# 文档 B')], 'tab-a', 'preview')

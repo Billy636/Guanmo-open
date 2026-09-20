@@ -306,7 +306,7 @@ export function useReadingPositionBridge({
         view.scrollDOM.scrollTop = position.editorScrollTop
       } else if (typeof position.topLine === 'number' && position.topLine <= view.state.doc.lines) {
         const pos = view.state.doc.line(position.topLine).from
-        view.scrollDOM.scrollTop = Math.max(0, view.lineBlockAt(pos).top - SCROLL_SYNC_TOP_OFFSET)
+        view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: SCROLL_SYNC_TOP_OFFSET }) })
       }
     })
   }, [editorViewRef])
