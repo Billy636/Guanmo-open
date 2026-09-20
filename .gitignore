@@ -74,6 +74,7 @@ agentmd.json
 AGENTS.md
 CLAUDE.md
 AI_IMPLEMENTATION_PLAN.md
+docs/GUANMO_DEVELOPMENT_GUIDE.md
 
 # Playwright
 .playwright-cli/
