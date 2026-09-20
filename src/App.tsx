@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { AppLayout } from './components/layout/AppLayout'
+import { AppLayout, preloadAiPanel } from './components/layout/AppLayout'
 import { ToastContainer } from './components/common/ToastContainer'
 import {
   getDatabaseRuntimeState,
@@ -243,6 +243,45 @@ function scheduleIdleWarmup(): void {
   )
 }
 
+/**
+ * 首屏真实内容可见后，按性能档位闲时预载 AI 侧边栏代码。
+ * 这里只下载模块，不挂载面板，也不触发聊天或阅读成果查询。
+ */
+function scheduleAiPanelPreload(): () => void {
+  let cancelled = false
+  let delayId: number | undefined
+  let idleId: number | undefined
+  const hasActiveTab = Boolean(useEditorStore.getState().activeTabId)
+  const surfaceReady = hasActiveTab
+    ? Promise.race([
+        waitForStartupPoint('editor-first-visible'),
+        waitForStartupPoint('preview-first-visible'),
+      ])
+    : Promise.resolve()
+
+  void surfaceReady.then(() => {
+    if (cancelled || typeof window.requestIdleCallback !== 'function') return
+    const policy = useSettingsStore.getState().editor.modePerformancePolicy
+    if (policy === 'memory') return
+
+    const scheduleIdle = () => {
+      if (cancelled) return
+      idleId = window.requestIdleCallback(() => {
+        if (cancelled || useSettingsStore.getState().editor.modePerformancePolicy === 'memory') return
+        void preloadAiPanel().catch((error) => console.warn('[App] AI panel preload failed:', error))
+      })
+    }
+    if (policy === 'speed') scheduleIdle()
+    else delayId = window.setTimeout(scheduleIdle, 1000)
+  })
+
+  return () => {
+    cancelled = true
+    if (delayId !== undefined) window.clearTimeout(delayId)
+    if (idleId !== undefined) window.cancelIdleCallback(idleId)
+  }
+}
+
 function CustomCursorFrame({
   enabled,
   children,
@@ -394,6 +433,7 @@ function App() {
   useEffect(() => {
     let cancelled = false
     let stopReadingReminderRuntime: (() => void) | undefined
+    let stopAiPanelPreload: (() => void) | undefined
     async function init() {
       const appInitStartedAt = performance.now()
 
@@ -464,6 +504,7 @@ function App() {
         }
 
         scheduleIdleWarmup()
+        stopAiPanelPreload = scheduleAiPanelPreload()
 
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -485,6 +526,7 @@ function App() {
     return () => {
       cancelled = true
       stopReadingReminderRuntime?.()
+      stopAiPanelPreload?.()
     }
   }, [])
 

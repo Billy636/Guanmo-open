@@ -39,7 +39,24 @@ import {
 import { markStartupPoint } from '@/services/startupPerformance'
 import { getBootSnapshotDisplayContent, hasBootSnapshotContent, readBootSnapshot } from '@/services/bootSnapshot'
 
-const AiPanel = lazy(() => import('@/components/ai/AiPanel').then((module) => ({ default: module.AiPanel })))
+type AiPanelModule = typeof import('@/components/ai/AiPanel')
+let aiPanelModulePromise: Promise<AiPanelModule> | null = null
+
+const loadAiPanelModule = (): Promise<AiPanelModule> => {
+  if (!aiPanelModulePromise) {
+    aiPanelModulePromise = import('@/components/ai/AiPanel').catch((error) => {
+      aiPanelModulePromise = null
+      throw error
+    })
+  }
+  return aiPanelModulePromise
+}
+const AiPanel = lazy(() => loadAiPanelModule().then((module) => ({ default: module.AiPanel })))
+
+/** 仅下载并解析 AI 面板模块，不挂载面板或触发其数据加载。 */
+export function preloadAiPanel(): Promise<AiPanelModule> {
+  return loadAiPanelModule()
+}
 const EditorArea = lazy(() => import('../editor/EditorArea').then((module) => ({ default: module.EditorArea })))
 const SettingsPage = lazy(() => import('@settings-entry').then((module) => ({ default: module.SettingsPage })))
 const FeatureIntroModal = lazy(() => import('@/features/featureIntro/FeatureIntroModal').then((module) => ({ default: module.FeatureIntroModal })))
@@ -73,6 +90,26 @@ function BootDocumentFallback() {
 
 interface AppLayoutProps {
   databaseReady: boolean
+}
+
+function AiPanelFallback() {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-gm-surface" aria-label="正在加载 AI 侧边栏" role="status">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-gm-border px-4">
+        <div className="h-4 w-24 animate-pulse rounded bg-gm-surface-hover" />
+        <div className="h-7 w-7 animate-pulse rounded-md bg-gm-surface-hover" />
+      </div>
+      <div className="flex-1 space-y-3 overflow-hidden px-4 py-5">
+        <div className="h-3 w-2/5 animate-pulse rounded bg-gm-surface-hover" />
+        <div className="h-16 w-full animate-pulse rounded-lg bg-gm-surface-hover" />
+        <div className="ml-auto h-12 w-4/5 animate-pulse rounded-lg bg-gm-surface-hover" />
+        <div className="h-20 w-full animate-pulse rounded-lg bg-gm-surface-hover" />
+      </div>
+      <div className="h-12 shrink-0 border-t border-gm-border px-4 py-3">
+        <div className="h-6 w-full animate-pulse rounded-md bg-gm-surface-hover" />
+      </div>
+    </div>
+  )
 }
 
 export function AppLayout({ databaseReady }: AppLayoutProps) {
@@ -635,7 +672,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
               className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-gm-primary/30 transition-colors"
               onMouseDown={handleResizeStart}
             />
-            <Suspense fallback={null}><AiPanel /></Suspense>
+            <Suspense fallback={<AiPanelFallback />}><AiPanel /></Suspense>
           </div>
         )}
       </div>
@@ -671,7 +708,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
           }}
         >
           <div className="min-h-0 min-w-0 flex-1">
-            <Suspense fallback={null}><AiPanel
+            <Suspense fallback={<AiPanelFallback />}><AiPanel
               fullscreenDragHandleProps={{
                 onPointerDown: handleFullscreenAiDragStart,
                 onPointerMove: handleFullscreenAiDragMove,
