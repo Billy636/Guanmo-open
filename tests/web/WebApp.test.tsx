@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { webcrypto } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -210,7 +210,13 @@ describe('WebApp', () => {
     await user.click(screen.getByRole('button', { name: '设置' }))
     await user.click(await screen.findByText('通用'))
     await user.click(await screen.findByRole('button', { name: '产品导览' }))
-    expect(await screen.findByRole('dialog', { name: '打开文件 / 文件夹' })).toBeInTheDocument()
+    const tour = await screen.findByRole('dialog', { name: '打开 Markdown' })
+    await user.click(within(tour).getByRole('button', { name: '全部专题' }))
+    const topics = screen.getByRole('dialog', { name: '选择一个专题' })
+    expect(within(topics).queryByRole('button', { name: /批注与阅读成果/ })).not.toBeInTheDocument()
+    await user.click(within(topics).getByRole('button', { name: '关闭' }))
+    expect(screen.getByRole('tab', { name: /通用/ })).toHaveAttribute('aria-selected', 'true')
+    expect(useEditorStore.getState().tabs.some((tab) => tab.id === 'guanmo-product-tour-demo')).toBe(false)
   })
 
   it('设置弹窗提供 Web Key 配置，Embedding 入口保持禁用', async () => {

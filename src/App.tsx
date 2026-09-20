@@ -357,7 +357,7 @@ function App() {
     toast.show({
       id: 'product-tour-invite',
       title: '欢迎使用观墨',
-      message: '用 1 分钟了解文件、阅读模式与 AI 助手',
+      message: '先快速认识观墨，再按需要查看批注、阅读成果与主题等专题',
       type: 'info',
       duration: null,
       actions: [{ label: '开始导览', primary: true, onClick: requestProductTour }],
