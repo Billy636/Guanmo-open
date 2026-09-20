@@ -159,6 +159,7 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
   const diffViewRef = useRef<MarkdownDiffViewHandle>(null)
   const annotationOverlayRef = useRef<AnnotationHoverOverlayHandle>(null)
   const restoredPreviewKeysRef = useRef<{ left: string | null; right: string | null }>({ left: null, right: null })
+  const pendingMaskedFirstVisibleRef = useRef<string | null>(null)
 
   const scrollSyncSessionRef = useRef(new ScrollSyncSession())
   const editorScrollFrameRef = useRef<number | null>(null)
@@ -516,6 +517,8 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     viewMode,
     viewModeRef,
     editorViewRef,
+    leftPreviewContainerRef: leftPreviewRef,
+    rightPreviewContainerRef: rightPreviewRef,
     leftMarkdownPreviewRef,
     rightMarkdownPreviewRef,
     restoredPreviewKeysRef,
@@ -1525,6 +1528,12 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
     }
   }, [activeTab?.content.length, activeTab?.id, markActiveDocumentFirstScreenReady, modePerformancePolicy, previewContentReady, viewMode])
 
+  useEffect(() => {
+    if (leftPreviewMasked || !activeTab?.id || pendingMaskedFirstVisibleRef.current !== activeTab.id) return
+    pendingMaskedFirstVisibleRef.current = null
+    handlePreviewFirstVisible(activeTab.id)
+  }, [activeTab?.id, handlePreviewFirstVisible, leftPreviewMasked])
+
   const schedulePendingPreviewReveal = useCallback(() => {
     if (previewRevealTimerRef.current !== null) window.clearTimeout(previewRevealTimerRef.current)
     previewRevealTimerRef.current = window.setTimeout(() => {
@@ -1680,7 +1689,14 @@ export function EditorArea({ databaseReady = true }: EditorAreaProps) {
                     initialScrollTop={leftInitialPreviewPosition?.previewScrollTop}
                     initialTopLine={leftInitialPreviewPosition?.topLine}
                     isVisible={leftPreviewVisible && previewContentReady}
-                    onFirstVisible={() => handlePreviewFirstVisible(activeTab?.id ?? null)}
+                    onFirstVisible={() => {
+                      const documentId = activeTab?.id ?? null
+                      if (leftPreviewRef.current?.style.visibility === 'hidden') {
+                        pendingMaskedFirstVisibleRef.current = documentId
+                      } else {
+                        handlePreviewFirstVisible(documentId)
+                      }
+                    }}
                     onRenderComplete={handlePreviewRenderComplete}
                     resource="left-preview"
                     readingMarks={activeReadingMarks}

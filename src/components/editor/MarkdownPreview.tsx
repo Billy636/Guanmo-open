@@ -2940,7 +2940,7 @@ function getMountedPreviewLineForTop(
     if (!block) continue
     const rect = element.getBoundingClientRect()
     if (rect.height <= 0) continue
-    if (targetViewportTop > rect.bottom) continue
+    if (targetViewportTop >= rect.bottom - 1) continue
     if (targetViewportTop <= rect.top) return block.startLine
     if (block.endLine <= block.startLine) return block.startLine
     const progress = Math.max(0, Math.min(1, (targetViewportTop - rect.top) / rect.height))

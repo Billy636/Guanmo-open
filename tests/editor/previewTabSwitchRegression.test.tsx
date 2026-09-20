@@ -80,6 +80,7 @@ import { EditorArea } from '@/components/editor/EditorArea'
 import { MarkdownDiffView, type MarkdownDiffViewHandle } from '@/components/editor/MarkdownDiffView'
 import { useEditorStore, type Tab, type ViewMode } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { runtimeFileReadingPositions } from '@/services/editorSession'
 
 function anonymousTab(id: string, content: string): Tab {
   return {
@@ -124,6 +125,7 @@ function setupEditor(
 }
 
 beforeEach(() => {
+  runtimeFileReadingPositions.clear()
   vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'Date'] })
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
   scheduledCallbacks.raf.clear()
@@ -551,7 +553,63 @@ describe('preview selection bridge', () => {
 // after restore useLayoutEffect set it, causing leftPreviewMasked = true
 // ============================================================
 describe('preview visibility regression: restoredPreviewKeysRef race', () => {
+  it('restores the editor position after renaming, closing, and reopening a file', async () => {
+    const content = '# 文档 A\n\n' + '正文 A\n\n'.repeat(80)
+    const tabA = { ...anonymousTab('tab-a', content), filePath: 'C:/fixtures/old.md' }
+    const tabB = { ...anonymousTab('tab-b', '# 文档 B'), filePath: 'C:/fixtures/b.md' }
+    setupEditor([tabA, tabB], tabA.id, 'edit')
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 500 })
+    try {
+      const { container } = render(<EditorArea />)
+      await settleLazyEditorModules()
+      act(() => vi.advanceTimersByTime(50))
+      const scroller = container.querySelector<HTMLElement>('.cm-scroller')!
+      act(() => {
+        scroller.scrollTop = 480
+        fireEvent.scroll(scroller)
+        useEditorStore.getState().renameFilePath('C:/fixtures/old.md', 'C:/fixtures/new.md', 'new.md')
+        useEditorStore.getState().closeTab(tabA.id)
+      })
+      act(() => useEditorStore.getState().addTab('C:/fixtures/new.md', 'new.md', content))
+      act(() => vi.advanceTimersByTime(50))
+      expect(useEditorStore.getState().activeTabId).not.toBe(tabA.id)
+      expect(container.querySelector<HTMLElement>('.cm-scroller')?.scrollTop).toBe(480)
+    } finally {
+      if (width) Object.defineProperty(HTMLElement.prototype, 'clientWidth', width)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+    }
+  })
+
   describe('进入对照阅读时同步共享阅读位置', () => {
+    it('keeps the right pane position when its file is closed and reopened', async () => {
+      const content = '# 文档\n\n' + '正文\n\n'.repeat(80)
+      const tabA = { ...anonymousTab('tab-a', content), filePath: 'C:/fixtures/a.md' }
+      const tabB = { ...anonymousTab('tab-b', content), filePath: 'C:/fixtures/b.md' }
+      setupEditor([tabA, tabB], tabA.id, 'dual-preview')
+      useEditorStore.setState({ rightPaneTabId: tabB.id, rightPaneUserSelected: true })
+      const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 500 })
+      try {
+        const { container } = render(<EditorArea />)
+        await settleLazyEditorModules()
+        act(() => vi.advanceTimersByTime(50))
+        const panes = container.querySelectorAll<HTMLElement>('.overflow-y-auto.overflow-x-hidden.select-text.bg-gm-surface')
+        act(() => {
+          panes[1].scrollTop = 720
+          fireEvent.scroll(panes[1])
+          useEditorStore.getState().closeTab(tabB.id)
+        })
+        act(() => useEditorStore.getState().addTab(tabB.filePath, tabB.title, content))
+        act(() => vi.advanceTimersByTime(50))
+        const reopenedPanes = container.querySelectorAll<HTMLElement>('.overflow-y-auto.overflow-x-hidden.select-text.bg-gm-surface')
+        expect(reopenedPanes[1].scrollTop).toBe(720)
+      } finally {
+        if (width) Object.defineProperty(HTMLElement.prototype, 'clientWidth', width)
+        else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+      }
+    })
+
     it('未指定右栏文件时把共享行号播种到左右两栏', async () => {
       const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 段`).join('\n\n')
       setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview')
@@ -676,6 +734,57 @@ describe('preview visibility regression: restoredPreviewKeysRef race', () => {
   })
 
   describe('tab switch in preview mode', () => {
+    it('keeps a restored preview hidden until its line correction finishes', async () => {
+      const content = Array.from({ length: 80 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}`).join('\n\n')
+      setupEditor([anonymousTab('tab-a', content), anonymousTab('tab-b', content)], 'tab-a', 'preview')
+      useEditorStore.setState({ readingPositions: { 'tab-a': { previewScrollTop: 400, topLine: 25 } } })
+      const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 })
+      try {
+        const { container } = render(<EditorArea />)
+        await settleLazyEditorModules()
+        act(() => vi.advanceTimersByTime(50))
+        act(() => useEditorStore.getState().setActiveTab('tab-b'))
+        act(() => useEditorStore.getState().setActiveTab('tab-a'))
+        const preview = getLeftPreviewContainer(container)!
+        expect(preview.style.visibility).toBe('hidden')
+        act(() => vi.advanceTimersByTime(50))
+        expect(preview.style.visibility).not.toBe('hidden')
+      } finally {
+        if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight)
+        else Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
+      }
+    })
+
+    it('restores a file after its tab is closed and reopened with a new ID', async () => {
+      const contentA = '# 文档 A\n\n' + '正文 A\n\n'.repeat(60)
+      const tabA = { ...anonymousTab('tab-a', contentA), filePath: 'C:/fixtures/a.md' }
+      const tabB = { ...anonymousTab('tab-b', '# 文档 B\n\n正文 B'), filePath: 'C:/fixtures/b.md' }
+      setupEditor([tabA, tabB], tabA.id, 'preview')
+      const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 500 })
+      try {
+        const { container } = render(<EditorArea />)
+        await settleLazyEditorModules()
+        act(() => vi.advanceTimersByTime(50))
+        const preview = getLeftPreviewContainer(container)!
+        act(() => {
+          preview.scrollTop = 380
+          fireEvent.scroll(preview)
+          useEditorStore.getState().closeTab(tabA.id)
+        })
+
+        act(() => useEditorStore.getState().addTab('c:\\fixtures\\a.md', '文档 A.md', contentA))
+        const reopenedId = useEditorStore.getState().activeTabId
+        expect(reopenedId).not.toBe(tabA.id)
+        act(() => vi.advanceTimersByTime(50))
+        expect(getLeftPreviewContainer(container)?.scrollTop).toBe(380)
+      } finally {
+        if (width) Object.defineProperty(HTMLElement.prototype, 'clientWidth', width)
+        else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+      }
+    })
+
     it('tab switch remounts container and keeps preview visible', async () => {
       // When switching tabs, the preview container's key changes, causing a remount.
       // The new container starts with scrollTop=0, so leftPreviewMasked should be false.
