@@ -73,13 +73,14 @@ describe('AI 头像统一使用小球（AiAvatar）', () => {
     expect(document.querySelector('.gm-ai-chat-icon')).toBeNull()
     expect(document.querySelector('.gm-ai-mascot-image')).toBeNull()
     expect(sprites[0]?.style.width).toBe('44px')
+    expect(Array.from(sprites).map((sprite) => sprite.getAttribute('data-animated'))).toEqual(['true'])
     for (const sprite of sprites) {
-      // aiChat.streaming === false，所有消息头像均为静态 idle
+      // aiChat.streaming === false，最新回复使用 idle 动画
       expect(sprite.getAttribute('data-state')).toBe('idle')
     }
   })
 
-  it('只让当前流式消息的小球播放动态，历史消息保持静态', () => {
+  it('只让最新 assistant 消息的小球播放动态，历史消息保持静态', () => {
     const originalMessages = aiChat.messages
     const originalStreaming = aiChat.streaming
     aiChat.messages = [

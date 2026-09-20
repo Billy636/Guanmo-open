@@ -30,9 +30,12 @@ import {
   consumePendingPanelNavigation,
   OPEN_AI_CHAT_EVENT,
   OPEN_READING_ARTIFACTS_EVENT,
+  OPEN_READING_REMINDERS_EVENT,
   TOGGLE_AI_CHAT_EVENT,
   TOGGLE_READING_ARTIFACTS_EVENT,
   requestOpenReadingArtifact,
+  reportAiPanelView,
+  type AiPanelView,
 } from '@/services/aiPanelNavigation'
 import { applyPendingEditCommand } from '@/services/pendingEditCommand'
 import { saveAssistantMessageAsMarkdown } from '@/services/assistantMessageExport'
@@ -114,7 +117,8 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   const userQuestionsById = useMemo(() => buildUserQuestionMap(messages), [messages])
   const [reasoningMode, setReasoningMode] = useState<'off' | 'on'>('off')
   const [resetManualToggle, setResetManualToggle] = useState(0)
-  const [panelView, setPanelView] = useState<'chat' | 'artifacts' | 'reminders'>('chat')
+  const [panelView, setPanelView] = useState<AiPanelView>('chat')
+  useEffect(() => { reportAiPanelView(panelView) }, [panelView])
   const [artifactFocusKey, setArtifactFocusKey] = useState<string | null>(null)
   const [reminders, setReminders] = useState<ReadingReminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(false)
@@ -158,7 +162,7 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
   }, [databaseEnabled, panelView])
 
   useEffect(() => {
-    const applyNavigation = (navigation: { mode: 'open' | 'toggle'; view: 'chat' | 'artifacts'; artifactKey?: string }) => {
+    const applyNavigation = (navigation: { mode: 'open' | 'toggle'; view: AiPanelView; artifactKey?: string }) => {
       if (navigation.view === 'artifacts' && !databaseEnabled) return
       if (navigation.mode === 'open') {
         setPanelView(navigation.view)
@@ -170,23 +174,26 @@ export function AiPanel({ fullscreenDragHandleProps }: AiPanelProps = {}) {
         setArtifactFocusKey(navigation.view === 'artifacts' ? navigation.artifactKey ?? null : null)
       }
     }
-    const handleNavigation = (fallback: { mode: 'open' | 'toggle'; view: 'chat' | 'artifacts' }) => {
+    const handleNavigation = (fallback: { mode: 'open' | 'toggle'; view: AiPanelView }) => {
       applyNavigation(consumePendingPanelNavigation() ?? fallback)
     }
     const handleOpenAiChat = () => handleNavigation({ mode: 'open', view: 'chat' })
     const handleToggleAiChat = () => handleNavigation({ mode: 'toggle', view: 'chat' })
     const handleOpenReadingArtifacts = () => handleNavigation({ mode: 'open', view: 'artifacts' })
+    const handleOpenReadingReminders = () => handleNavigation({ mode: 'open', view: 'reminders' })
     const handleToggleReadingArtifacts = () => handleNavigation({ mode: 'toggle', view: 'artifacts' })
     const pendingNavigation = consumePendingPanelNavigation()
     if (pendingNavigation) applyNavigation(pendingNavigation)
     window.addEventListener(OPEN_AI_CHAT_EVENT, handleOpenAiChat)
     window.addEventListener(TOGGLE_AI_CHAT_EVENT, handleToggleAiChat)
     window.addEventListener(OPEN_READING_ARTIFACTS_EVENT, handleOpenReadingArtifacts)
+    window.addEventListener(OPEN_READING_REMINDERS_EVENT, handleOpenReadingReminders)
     window.addEventListener(TOGGLE_READING_ARTIFACTS_EVENT, handleToggleReadingArtifacts)
     return () => {
       window.removeEventListener(OPEN_AI_CHAT_EVENT, handleOpenAiChat)
       window.removeEventListener(TOGGLE_AI_CHAT_EVENT, handleToggleAiChat)
       window.removeEventListener(OPEN_READING_ARTIFACTS_EVENT, handleOpenReadingArtifacts)
+      window.removeEventListener(OPEN_READING_REMINDERS_EVENT, handleOpenReadingReminders)
       window.removeEventListener(TOGGLE_READING_ARTIFACTS_EVENT, handleToggleReadingArtifacts)
     }
   }, [databaseEnabled, panelView])
@@ -1493,7 +1500,8 @@ export const ChatBubble = memo(function ChatBubble({
 }) {
   const isUser = role === 'user'
   const isEmpty = !content && isLast && streaming
-  const isAssistantStreaming = !isUser && isLast && streaming
+  const isLatestAssistant = !isUser && isLast
+  const isAssistantStreaming = isLatestAssistant && streaming
   const displayedSources = useMemo(
     () => resolveStoredSourceReferences(sources, referencedSourceIds),
     [referencedSourceIds, sources],
@@ -1582,7 +1590,7 @@ export const ChatBubble = memo(function ChatBubble({
       } : undefined}
     >
       {!isUser && (
-        <AiAvatar size="message" animated={isAssistantStreaming} streaming={isAssistantStreaming} visualId={visualId} />
+        <AiAvatar size="message" animated={isLatestAssistant} streaming={isAssistantStreaming} visualId={visualId} />
       )}
       <div className="group relative min-w-0 w-fit max-w-[80%]">
         <div
@@ -1736,7 +1744,7 @@ function AiAvatar({
     ? 'gm-ai-empty-icon-shell w-16 h-16 rounded-2xl flex items-center justify-center mb-4'
     : 'gm-ai-avatar w-9 h-9 rounded-xl flex items-center justify-center mr-2 flex-shrink-0 mt-1'
 
-  // 历史消息头像固定 idle 静态展示，仅空态图标与当前流式消息跟随实时状态。
+  // 历史消息头像固定 idle 静态展示，最新回复使用 idle 动画，当前流式消息跟随实时状态。
   const forceIdle = size === 'message' && !streaming
   const spriteClassName = size === 'message' ? `${className} gm-ai-avatar--sprite` : className
   return (
