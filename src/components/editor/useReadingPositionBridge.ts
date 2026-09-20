@@ -264,6 +264,14 @@ export function useReadingPositionBridge({
 
   const allowPreviewPositionUpdates = useCallback((tabId: string | null | undefined, pane: 'left' | 'right') => {
     if (!tabId || restoringPreviewTabsRef.current[pane] !== tabId) return
+    // The first user gesture can happen in the same frame as the initial
+    // programmatic restore. Release both restore guards before the resulting
+    // scroll event is handled, otherwise the user's first position is lost.
+    if (restoreScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(restoreScrollFrameRef.current)
+      restoreScrollFrameRef.current = null
+    }
+    isRestoringScrollRef.current = false
     if (previewRestoreFramesRef.current[pane] !== null) {
       window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
       previewRestoreFramesRef.current[pane] = null

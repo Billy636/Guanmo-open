@@ -751,6 +751,26 @@ describe('preview visibility regression: restoredPreviewKeysRef race', () => {
       expect(scrollIntoViewSpy).toHaveBeenCalledWith(target, { y: 'start', yMargin: 32 })
     })
 
+    it('saves the first user scroll even while the initial restore frame is pending', async () => {
+      const contentA = '# 文档 A\n\n' + '正文 A\n\n'.repeat(100)
+      const tabA = anonymousTab('tab-a', contentA)
+      const tabB = anonymousTab('tab-b', '# 文档 B')
+      setupEditor([tabA, tabB], tabA.id, 'preview')
+      useEditorStore.setState({ readingPositions: { [tabA.id]: { previewScrollTop: 400, topLine: 25 } } })
+
+      const { container } = render(<EditorArea />)
+      await settleLazyEditorModules()
+      const preview = getLeftPreviewContainer(container)!
+      act(() => {
+        preview.scrollTop = 520
+        fireEvent.wheel(preview, { deltaY: 120 })
+        fireEvent.scroll(preview)
+        useEditorStore.getState().setActiveTab(tabB.id)
+      })
+
+      expect(useEditorStore.getState().readingPositions[tabA.id]?.previewScrollTop).toBe(520)
+    })
+
     it('does not replace a restored position with a later layout scroll before user input', async () => {
       const content = '# 文档 A\n\n' + '正文 A\n\n'.repeat(100)
       setupEditor([anonymousTab('tab-a', content), anonymousTab('tab-b', '# 文档 B')], 'tab-a', 'preview')
