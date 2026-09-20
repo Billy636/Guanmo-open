@@ -208,6 +208,8 @@ describe('进度占位文案识别（isProgressPlaceholder）', () => {
     expect(isProgressPlaceholder('')).toBe(true)
     expect(isProgressPlaceholder('正在准备 AI 请求...')).toBe(true)
     expect(isProgressPlaceholder('Agent 正在规划工具链路...')).toBe(true)
+    expect(isProgressPlaceholder('正在分析文档修改要求...')).toBe(true)
+    expect(isProgressPlaceholder('正在确定上下文读取范围...')).toBe(true)
     expect(isProgressPlaceholder('AI 正在判断下一步处理方式...')).toBe(true)
     expect(isProgressPlaceholder('索引库初始化失败，正在使用关键词检索…')).toBe(true)
     expect(isProgressPlaceholder('正在执行工具：web_search...')).toBe(true)

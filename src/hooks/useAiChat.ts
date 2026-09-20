@@ -13,7 +13,7 @@ import type { ContextTag } from '@/types/contextTag'
 import { readRememberedMarkdownFileForOpen } from '@/services/markdownFileOpenPolicy'
 import { setAgentScopeContext } from '@/services/aiScope'
 import { resolveDirectRagSources, searchScopedKnowledge, shouldTriggerScopedRag, streamFinalAnswer } from '@/services/aiChatFlow'
-import { buildAgentFinalAnswerMessages, buildMessagesForModel, buildSupplementalAiContext, countRagSourcesInContext, createContextMeta, prepareChatHistoryForModel, resolveAiAnswerMode } from '@/services/aiChatMessages'
+import { buildAgentFinalAnswerMessages, buildChatMessageTags, buildMessagesForModel, buildSupplementalAiContext, countRagSourcesInContext, createContextMeta, createUserChatMessage, prepareChatHistoryForModel, resolveAiAnswerMode } from '@/services/aiChatMessages'
 import { hideLikelyToolJsonPrefix, stripToolCallJson } from '@/services/agent/toolCallParser'
 import { buildMemoryContext, isPersonalizedRewriteMemoryIntent, processMemoryCandidateExtraction, searchMemories } from '@/services/memory/memoryService'
 import type { ManualCapability } from '@/components/ai/ManualToolToggle'
@@ -30,7 +30,7 @@ import {
 } from '@/services/agent/sourceMetadata'
 import { READING_REMINDER_FEATURE_AVAILABLE } from '@/services/readingReminderFeature'
 
-function getAgentProgressText(step: AgentStep): string {
+export function getAgentProgressText(step: AgentStep): string {
   if (step.type === 'progress') {
     return {
       rag_initializing: '正在初始化索引库…',
@@ -64,11 +64,19 @@ function getAgentProgressText(step: AgentStep): string {
     case 'save_memory':
       return '正在写入长期记忆...'
     case 'read_context_file':
-      return '正在读取已授权文件内容...'
+      return '正在读取上下文...'
     case 'read_selection_context':
-      return '正在阅读上下文...'
+      return '正在读取选区上下文...'
+    case 'get_recent_context_tag':
+      return '正在读取最近上下文标签...'
+    case 'knowledge_stats':
+      return '正在读取知识库统计...'
+    case 'list_current_edit_targets':
+      return '正在读取可修改目标...'
+    case 'get_current_tab_text':
+      return '正在读取当前文档内容...'
     case 'replace_current_tab_text':
-      return '正在生成文本修改确认卡片...'
+      return '正在调用文档修改工具...'
     case 'propose_save_reading_artifact':
       return '正在生成阅读成果确认卡片...'
     case 'propose_create_markdown_note':
@@ -84,7 +92,7 @@ function getAgentProgressText(step: AgentStep): string {
   }
 }
 
-function getAgentToolLabel(toolName: string): string {
+export function getAgentToolLabel(toolName: string): string {
   return {
     search_knowledge: '本地知识库检索',
     search_reading_artifacts: '阅读成果检索',
@@ -94,9 +102,13 @@ function getAgentToolLabel(toolName: string): string {
     list_memories: '记忆库概览读取',
     web_search: '联网搜索',
     save_memory: '长期记忆写入',
-    read_context_file: '授权文件读取',
-    read_selection_context: '上下文读取',
-    replace_current_tab_text: '修改确认卡片生成',
+    read_context_file: '上下文读取',
+    read_selection_context: '选区上下文读取',
+    get_recent_context_tag: '最近上下文标签读取',
+    knowledge_stats: '知识库统计读取',
+    list_current_edit_targets: '可修改目标读取',
+    get_current_tab_text: '当前文档内容读取',
+    replace_current_tab_text: '文档修改工具调用',
     propose_save_reading_artifact: '阅读成果确认卡片生成',
     propose_create_markdown_note: '阅读笔记确认卡片生成',
     propose_create_reading_reminder: READING_REMINDER_FEATURE_AVAILABLE
@@ -232,20 +244,42 @@ export function useAiChat() {
         setStreaming(false)
       }
 
-      const { tagContext, tagMetadata, userMessage: userMsg } = await prepareConversationContext({
-        content,
-        contextTags,
-        readFile: readRememberedMarkdownFileForOpen,
-      })
-      if (!isCurrentRequest()) return
-      addMessage(userMsg)
+      const initialUserMessage = createUserChatMessage(content, '', buildChatMessageTags(contextTags))
+      if (hasTags) initialUserMessage.displayContent = content.trim()
+      addMessage(initialUserMessage)
       addMessage({
         id: assistantMessageId,
-        parentId: userMsg.id,
+        parentId: initialUserMessage.id,
         role: 'assistant',
-        content: '正在准备 AI 请求...',
+        content: hasTags ? '正在读取上下文...' : '正在准备 AI 请求...',
         timestamp: Date.now(),
       })
+      if (contextTags && contextTags.length > 0) {
+        addTimelineItem({ type: 'local_search_start', label: '正在读取上下文' })
+      }
+      let preparedContext: Awaited<ReturnType<typeof prepareConversationContext>>
+      try {
+        preparedContext = await prepareConversationContext({
+          content,
+          contextTags,
+          readFile: readRememberedMarkdownFileForOpen,
+        })
+      } catch (err) {
+        if (isCurrentRequest()) {
+          const msg = err instanceof Error ? err.message : String(err)
+          setError(`读取上下文失败：${msg}`)
+          removeMessageById(assistantMessageId)
+          activeRequestRef.current = null
+          cancelRef.current = () => {}
+          setStreaming(false)
+        }
+        return
+      }
+      if (!isCurrentRequest()) return
+      const { tagContext, tagMetadata } = preparedContext
+      const userMsg = { ...preparedContext.userMessage, id: initialUserMessage.id, timestamp: initialUserMessage.timestamp }
+      updateMessageContent(initialUserMessage.id!, userMsg.content)
+      updateRequestMessage('正在准备 AI 请求...')
       setRagStatus('idle')
       setRagSources([])
 
@@ -353,8 +387,13 @@ export function useAiChat() {
       const executeAgentRequest = async () => {
         clearAgentSteps()
         initAgent()
-        updateRequestMessage('Agent 正在规划工具链路...')
-        addTimelineItem({ type: 'local_search_start', label: 'Agent 开始规划工具链路' })
+        const planningText = routingDecision.requiresEditConfirmation
+          ? '正在分析文档修改要求...'
+          : candidateToolNames.some((name) => name === 'read_context_file' || name === 'read_selection_context')
+            ? '正在确定上下文读取范围...'
+            : 'Agent 正在规划工具链路...'
+        updateRequestMessage(planningText)
+        addTimelineItem({ type: 'local_search_start', label: planningText.replace(/\.\.\.$/, '') })
         let pendingEditCount = 0
         let pendingActionCount = 0
         let liveAgentStepCount = 0
@@ -364,7 +403,7 @@ export function useAiChat() {
           liveAgentStepCount++
           addAgentStep(step)
           if (step.type !== 'thought' || !hasVisibleStreamContent) {
-            updateRequestMessage(getAgentProgressText(step))
+            updateRequestMessage(step.type === 'thought' ? planningText : getAgentProgressText(step))
           }
           if (step.type !== 'thought') hasVisibleStreamContent = false
           const event = decodeAgentStepEvent(step)
@@ -394,7 +433,11 @@ export function useAiChat() {
           } else if (event.type === 'action' && event.toolName === 'search_knowledge') {
             addTimelineItem({ type: 'local_search_start', label: '检索本地知识库索引' })
           } else if (event.type === 'action' && event.toolName === 'read_selection_context') {
-            addTimelineItem({ type: 'local_search_start', label: '正在阅读上下文' })
+            addTimelineItem({ type: 'local_search_start', label: '正在读取选区上下文' })
+          } else if (event.type === 'action' && event.toolName === 'read_context_file') {
+            addTimelineItem({ type: 'local_search_start', label: '正在读取上下文' })
+          } else if (event.type === 'action' && event.toolName === 'replace_current_tab_text') {
+            addTimelineItem({ type: 'local_search_start', label: '正在调用文档修改工具' })
           } else if (event.type === 'action' && event.toolName === 'web_search') {
             addTimelineItem({ type: 'web_search_start', label: '执行联网搜索' })
           } else if (event.type === 'action' && event.toolName === 'search_memory') {

@@ -109,7 +109,23 @@ export function stripToolCallJson(text: string): string {
 export function hideLikelyToolJsonPrefix(text: string): string {
   const trimmed = text.trimStart()
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return text
-  if (/"tool"\s*:|needsEditConfirmation/.test(trimmed)) {
+  const keyMatch = /^\{\s*["']?([A-Za-z]*)/.exec(trimmed)
+  const firstKey = keyMatch?.[1]?.toLowerCase() || ''
+  const afterBrace = trimmed.slice(1)
+  const startsLikeJsonObject = afterBrace === '' || /^[\s"']/.test(afterBrace)
+  const looksLikeStructuredToolCall = trimmed.startsWith('{') && (
+    (startsLikeJsonObject && firstKey === '')
+    || (firstKey.length > 0 && (
+      'tool'.startsWith(firstKey)
+      || firstKey.startsWith('tool')
+      || 'needseditconfirmation'.startsWith(firstKey)
+      || firstKey.startsWith('needseditconfirmation')
+    ))
+  )
+  const fencedBody = trimmed.replace(/^```(?:json)?\s*/i, '')
+  const looksLikeFencedToolCall = trimmed.startsWith('```')
+    && (fencedBody === '' || (fencedBody.startsWith('{') && (fencedBody.length === 1 || /^[\s"']/.test(fencedBody.slice(1)))))
+  if (looksLikeStructuredToolCall || looksLikeFencedToolCall || /"tool"\s*:|needsEditConfirmation/.test(trimmed)) {
     const stripped = stripToolCallJson(text)
     return stripped === text.trim() ? '' : stripped
   }

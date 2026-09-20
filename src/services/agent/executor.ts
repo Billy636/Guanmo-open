@@ -968,6 +968,14 @@ async function runAgentInternal({
     timestamp: Date.now(),
   })
 
+  const waitForToolStartPaint = () => new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve())
+      return
+    }
+    setTimeout(resolve, 0)
+  })
+
   const requestAgentCompletion = async () => {
     const send = async (currentMessages: ChatMessage[]) => {
       if (remainingDeadlineMs() <= 0) throw new DOMException('Agent deadline exceeded', 'TimeoutError')
@@ -1300,6 +1308,14 @@ async function runAgentInternal({
         toolArgs: toolCall.args,
         timestamp: Date.now(),
       })
+    }
+
+    if (parsedToolCalls.some(({ name }) => (
+      name === 'read_context_file'
+      || name === 'read_selection_context'
+      || name === 'replace_current_tab_text'
+    ))) {
+      await waitForToolStartPaint()
     }
 
     const toolResults = await executeToolCalls(
