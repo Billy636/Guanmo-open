@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useAppStore, type FullscreenAiPosition, type FullscreenAiSize } from '@/stores/appStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboard'
@@ -17,6 +17,8 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { resolveThemeDefinition } from '@/services/appearance/appearanceDom'
 import { useFullscreen } from '@/hooks/useFullscreen'
 import { OPEN_SETTINGS_SECTION_EVENT } from '@/services/settingsNavigation'
+import { getRuntimeCapabilities } from '@/services/runtimeCapabilities'
+import { getAiPanelView, requestOpenAiChat, requestOpenReadingArtifacts, requestOpenReadingReminders, type AiPanelView } from '@/services/aiPanelNavigation'
 import {
   OPEN_FEATURE_INTRO_EVENT,
   type FeatureIntroEventDetail,
@@ -31,6 +33,8 @@ import {
 import {
   PRODUCT_TOUR_DEMO_CONTENT,
   PRODUCT_TOUR_DEMO_TAB_ID,
+  getProductTourSteps,
+  type ProductTourTopic,
 } from '@/features/productTour/productTourContent'
 import { markStartupPoint } from '@/services/startupPerformance'
 import { getBootSnapshotDisplayContent, hasBootSnapshotContent, readBootSnapshot } from '@/services/bootSnapshot'
@@ -114,7 +118,9 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
   const [featureIntroVersion, setFeatureIntroVersion] = useState<string | undefined>()
   const [fullscreenFileDrawerOpen, setFullscreenFileDrawerOpen] = useState(false)
   const [productTourOpen, setProductTourOpen] = useState(false)
+  const [productTourTopic, setProductTourTopic] = useState<ProductTourTopic | 'topics'>('overview')
   const [productTourStep, setProductTourStep] = useState(0)
+  const productTourSteps = useMemo(() => productTourTopic === 'topics' ? [] : getProductTourSteps(productTourTopic, getRuntimeCapabilities().isWeb), [productTourTopic])
   const productTourSnapshotRef = useRef<{
     activeTabId: string | null
     viewMode: ReturnType<typeof useEditorStore.getState>['viewMode']
@@ -122,6 +128,11 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
     rightPaneTabId: string | null
     rightPaneUserSelected: boolean
     createdDemoTab: boolean
+    sidebarCollapsed: boolean
+    aiPanelOpen: boolean
+    aiPanelView: AiPanelView
+    settingsOpen: boolean
+    settingsSection: string | null
   } | null>(null)
   const [fullscreenAiPosition, setFullscreenAiPosition] = useState<FullscreenAiPosition>(() => (
     storedFullscreenAiPosition
@@ -183,6 +194,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
 
   const finishProductTour = useCallback(() => {
     const snapshot = productTourSnapshotRef.current
+    setProductTourOpen(false)
     if (snapshot) {
       const editor = useEditorStore.getState()
       if (snapshot.createdDemoTab && editor.tabs.some((tab) => tab.id === PRODUCT_TOUR_DEMO_TAB_ID)) {
@@ -198,9 +210,19 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
           : null,
         previewSwitchingTabId: null,
       })
+      const app = useAppStore.getState()
+      if (app.sidebarCollapsed !== snapshot.sidebarCollapsed) app.toggleSidebar()
+      if (app.aiPanelOpen !== snapshot.aiPanelOpen) app.toggleAiPanel()
+      if (snapshot.aiPanelOpen) {
+        if (snapshot.aiPanelView === 'artifacts') requestOpenReadingArtifacts()
+        else if (snapshot.aiPanelView === 'reminders') requestOpenReadingReminders()
+        else requestOpenAiChat()
+      }
+      setSettingsSection(snapshot.settingsSection)
+      setSettingsOpen(snapshot.settingsOpen)
     }
     productTourSnapshotRef.current = null
-    setProductTourOpen(false)
+    setProductTourTopic('overview')
     setProductTourStep(0)
   }, [])
 
@@ -215,6 +237,11 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       rightPaneTabId: editor.rightPaneTabId,
       rightPaneUserSelected: editor.rightPaneUserSelected,
       createdDemoTab,
+      sidebarCollapsed: useAppStore.getState().sidebarCollapsed,
+      aiPanelOpen: useAppStore.getState().aiPanelOpen,
+      aiPanelView: getAiPanelView(),
+      settingsOpen,
+      settingsSection,
     }
     if (createdDemoTab) {
       editor.openTab({
@@ -229,12 +256,30 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
       })
     }
     editor.setViewMode('preview')
-    useAppStore.getState().closeAiPanel()
-    if (!useAppStore.getState().sidebarCollapsed) useAppStore.getState().toggleSidebar()
-    setSettingsOpen(false)
+    setProductTourTopic('overview')
     setProductTourStep(0)
     setProductTourOpen(true)
-  }, [productTourOpen])
+  }, [productTourOpen, settingsOpen, settingsSection])
+
+  const tourSurface = productTourSteps[productTourStep]?.surface
+  useEffect(() => {
+    if (!productTourOpen || !tourSurface) return
+    const app = useAppStore.getState()
+    const settings = tourSurface === 'settings-ai' || tourSurface === 'settings-general'
+    setSettingsOpen(settings)
+    if (settings) {
+      setSettingsSection(tourSurface === 'settings-ai' ? 'ai' : 'general')
+      if (app.aiPanelOpen) app.closeAiPanel()
+      return
+    }
+    const sidebar = tourSurface === 'sidebar'
+    if (app.sidebarCollapsed === sidebar) app.toggleSidebar()
+    const ai = tourSurface === 'ai-chat' || tourSurface === 'artifacts'
+    if (ai && !app.aiPanelOpen) app.toggleAiPanel()
+    if (!ai && app.aiPanelOpen) app.closeAiPanel()
+    if (tourSurface === 'ai-chat') requestOpenAiChat()
+    if (tourSurface === 'artifacts') requestOpenReadingArtifacts()
+  }, [productTourOpen, tourSurface])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -581,6 +626,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
         {/* AI Panel */}
         {!isFullscreen && aiPanelOpen && (
           <div
+            data-product-tour="ai-panel"
             className="border-l border-gm-border flex-shrink-0 animate-slideInRight relative"
             style={{ width: aiPanelWidth, contain: 'layout' }}
           >
@@ -671,7 +717,7 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
         cursor={customCursorEnabled}
       >
         <div className={customCursorEnabled ? undefined : 'gm-system-cursor'} style={{ width: '100%', height: '560px', overflow: 'hidden', padding: '10px 14px', minHeight: 0 }}>
-          <Suspense fallback={null}><SettingsPage initialSection={settingsSection} /></Suspense>
+          <Suspense fallback={null}><SettingsPage initialSection={settingsSection} onSectionChange={setSettingsSection} /></Suspense>
         </div>
       </Modal>
 
@@ -690,8 +736,11 @@ export function AppLayout({ databaseReady }: AppLayoutProps) {
 
       {productTourOpen && <Suspense fallback={null}><ProductTourOverlay
         open={productTourOpen}
+        topic={productTourTopic}
+        steps={productTourSteps}
         stepIndex={productTourStep}
         onStepChange={setProductTourStep}
+        onTopicChange={(topic) => { setProductTourTopic(topic); setProductTourStep(0) }}
         onClose={finishProductTour}
       /></Suspense>}
 

@@ -273,7 +273,7 @@ function WebAiSettings() {
   }
 
   return (
-    <div className="w-full pb-6">
+    <div data-product-tour="ai-settings-content" className="w-full pb-6">
       <div className="mb-4 rounded-xl border border-gm-border bg-gm-surface-elevated p-3">
         <p className="text-caption text-gm-text-tertiary">浏览器模式下仅支持当前会话对话和联网搜索；RAG、长期记忆、持久聊天历史和 Embedding 不可用。</p>
       </div>
@@ -378,19 +378,44 @@ function WebGeneralSettings() {
   const updateAppearanceSettings = useSettingsStore((state) => state.updateAppearanceSettings)
   const reset = useSettingsStore((state) => state.resetAiShortcutActions)
   const clearChat = useChatStore((state) => state.clearMessages)
-  return <div className="w-full pb-6"><SectionTitle>外观</SectionTitle><div className="py-1.5"><span className="text-body text-gm-text">主题</span><p className="mt-0.5 text-caption text-gm-text-tertiary">选择后立即应用到编辑器、预览和应用界面</p><ThemePicker value={appearance.themeId} onChange={(value) => updateAppearanceSettings({ themeId: value })} /></div><SettingField label="定制光标" description="使用手作风光标"><Switch checked={appearance.customCursorEnabled} onChange={(value) => updateAppearanceSettings({ customCursorEnabled: value })} /></SettingField><Sep /><SectionTitle>数据边界</SectionTitle><div className="rounded-xl border border-gm-border bg-gm-surface-elevated p-3 text-caption text-gm-text-tertiary">网页端不初始化数据库；文件、标签页和聊天消息不会跨刷新保留。</div><div className="mt-3 flex flex-wrap gap-2"><Button type="default" size="small" onClick={requestProductTour}>产品导览</Button><Button type="text" size="small" onClick={() => { reset(); clearChat() }}>恢复快捷操作默认值并清空当前会话</Button></div><Sep /><Collapse question="隐私说明" answer={<p className="py-1 text-caption text-gm-text-secondary">API Key 只按上方选择的 Web 存储方式处理，网页端不启用 SQLite、RAG、Embedding 或持久聊天历史。</p>} /><Footer type="tree" className="mt-6 opacity-70" /></div>
+  return (
+    <div className="w-full pb-6">
+      <div data-product-tour="settings-appearance">
+        <SectionTitle>外观</SectionTitle>
+        <div data-product-tour="theme-picker" className="py-1.5">
+          <span className="text-body text-gm-text">主题</span>
+          <p className="mt-0.5 text-caption text-gm-text-tertiary">选择后立即应用到编辑器、预览和应用界面</p>
+          <ThemePicker value={appearance.themeId} onChange={(value) => updateAppearanceSettings({ themeId: value })} />
+        </div>
+        <SettingField label="定制光标" description="使用手作风光标">
+          <Switch checked={appearance.customCursorEnabled} onChange={(value) => updateAppearanceSettings({ customCursorEnabled: value })} />
+        </SettingField>
+      </div>
+      <Sep />
+      <SectionTitle>数据边界</SectionTitle>
+      <div className="rounded-xl border border-gm-border bg-gm-surface-elevated p-3 text-caption text-gm-text-tertiary">网页端不初始化数据库；文件、标签页和聊天消息不会跨刷新保留。</div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button type="default" size="small" onClick={requestProductTour}>产品导览</Button>
+        <Button type="text" size="small" onClick={() => { reset(); clearChat() }}>恢复快捷操作默认值并清空当前会话</Button>
+      </div>
+      <Sep />
+      <Collapse question="隐私说明" answer={<p className="py-1 text-caption text-gm-text-secondary">API Key 只按上方选择的 Web 存储方式处理，网页端不启用 SQLite、RAG、Embedding 或持久聊天历史。</p>} />
+      <Footer type="tree" className="mt-6 opacity-70" />
+    </div>
+  )
 }
 
-export function WebSettingsPage() {
-  const [active, setActive] = useState('ai')
+export function WebSettingsPage({ initialSection = null, onSectionChange }: { initialSection?: string | null; onSectionChange?: (section: string) => void }) {
+  const [active, setActive] = useState(initialSection ?? 'ai')
+  useEffect(() => { if (initialSection) setActive(initialSection) }, [initialSection])
   const tabs = useMemo(() => [
-    { key: 'ai', label: <span className="text-body">AI 模型</span>, children: <WebAiSettings /> },
+    { key: 'ai', label: <span data-product-tour="settings-ai-tab" className="text-body">AI 模型</span>, children: <WebAiSettings /> },
     { key: 'editor', label: <span className="text-body">编辑器</span>, children: <WebEditorSettings /> },
     { key: 'ai-shortcuts', label: <span className="text-body">快捷操作</span>, children: <AiShortcutSettings /> },
     { key: 'shortcuts', label: <span className="text-body">快捷键</span>, children: <WebShortcutSettings /> },
     { key: 'general', label: <span className="text-body">通用</span>, children: <WebGeneralSettings /> },
   ], [])
-  return <div className="h-full flex flex-col"><div className="mb-4 flex-shrink-0"><h2 className="text-heading font-bold text-gm-text">设置</h2></div><div className="flex min-h-0 flex-1 flex-col"><Tabs items={tabs} activeKey={active} onChange={setActive} className="gm-settings-tabs gm-settings-tabs--web" leafAnimation={false} shadow={false} /></div></div>
+  return <div className="h-full flex flex-col"><div className="mb-4 flex-shrink-0"><h2 className="text-heading font-bold text-gm-text">设置</h2></div><div data-product-tour="settings-tabs" data-product-tour-viewport="settings" className="flex min-h-0 flex-1 flex-col"><Tabs items={tabs} activeKey={active} onChange={(section) => { setActive(section); onSectionChange?.(section) }} className="gm-settings-tabs gm-settings-tabs--web" leafAnimation={false} shadow={false} /></div></div>
 }
 
 export const SettingsPage = WebSettingsPage

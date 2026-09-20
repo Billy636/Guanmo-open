@@ -109,8 +109,8 @@ export function ThemeManager() {
   }
 
   return (
-    <div className="gm-theme-manager">
-      <div className="gm-theme-manager__toolbar">
+    <div className="gm-theme-manager" data-product-tour="theme-picker">
+      <div className="gm-theme-manager__toolbar" data-product-tour="theme-manager-actions">
         <div>
           <span className="text-body text-gm-text">主题管理</span>
           <p className="mt-0.5 text-caption text-gm-text-tertiary">前三个系统主题不可删除，后两个槽位可由你自由替换。</p>

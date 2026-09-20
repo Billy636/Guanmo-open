@@ -119,15 +119,16 @@ const TABS_CONFIG = [
   { key: 'general', text: '通用', children: <GeneralSettings /> },
 ]
 
-export function SettingsPage({ initialSection = null }: { initialSection?: string | null }) {
-  const [active, setActive] = useState('ai')
+export function SettingsPage({ initialSection = null, onSectionChange }: { initialSection?: string | null; onSectionChange?: (section: string) => void }) {
+  const [active, setActive] = useState(initialSection ?? 'ai')
+  useEffect(() => { if (initialSection) setActive(initialSection) }, [initialSection])
   const [showKnowledgeManager, setShowKnowledgeManager] = useState(false)
   const openKnowledgeManager = useCallback(() => setShowKnowledgeManager(true), [])
   const closeKnowledgeManager = useCallback(() => setShowKnowledgeManager(false), [])
 
   const tabs = TABS_CONFIG.map((tab) => ({
     key: tab.key,
-    label: <span className="text-body">{tab.text}</span>,
+    label: <span data-product-tour={tab.key === 'ai' ? 'settings-ai-tab' : undefined} className="text-body">{tab.text}</span>,
     children: tab.key === 'ai'
       ? <AiSettings onOpenKnowledgeManager={openKnowledgeManager} />
       : tab.children,
@@ -138,11 +139,11 @@ export function SettingsPage({ initialSection = null }: { initialSection?: strin
       <div className="flex-shrink-0 mb-4">
         <h2 className="text-heading font-bold text-gm-text">设置</h2>
       </div>
-      <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
+      <div data-product-tour="settings-tabs" data-product-tour-viewport="settings" className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
         <Tabs
           items={tabs}
           activeKey={active}
-          onChange={setActive}
+          onChange={(section) => { setActive(section); onSectionChange?.(section) }}
           className="gm-settings-tabs"
           leafAnimation={false}
           shadow={false}
@@ -766,7 +767,7 @@ function AiSettings({ onOpenKnowledgeManager }: { onOpenKnowledgeManager: () => 
   const chatProtocolCapabilities = getChatProtocolCapabilities(ai.protocol)
 
   return (
-    <div className="w-full pb-6">
+    <div data-product-tour="ai-settings-content" className="w-full pb-6">
       {!isTauri() && (
         <div className="mb-4 rounded-xl border border-gm-border bg-gm-surface-elevated p-3">
           <p className="text-caption text-gm-text-tertiary">
@@ -1671,6 +1672,7 @@ function GeneralSettings() {
         </>
       )}
 
+      <div data-product-tour="settings-appearance">
       <SectionTitle>外观</SectionTitle>
       <div className="gm-theme-setting py-1.5">
         <div>
@@ -1710,6 +1712,7 @@ function GeneralSettings() {
       <SettingField label="全屏过渡动画" description="用轻微失焦遮盖全屏尺寸切换；系统启用减少动态效果时会自动跳过">
         <Switch checked={appearance.fullscreenTransitionEnabled} onChange={(v) => updateAppearanceSettings({ fullscreenTransitionEnabled: v })} />
       </SettingField>
+      </div>
       <Sep />
       <Button type="default" block onClick={handleRestoreDefaults}>恢复默认设置</Button>
       <Sep />

@@ -581,7 +581,7 @@ export function ReadingArtifactCenter({
   )
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col bg-gm-canvas text-gm-text">
+    <div ref={rootRef} data-product-tour="reading-artifact-center" className="flex h-full min-h-0 flex-col bg-gm-canvas text-gm-text">
       <div className="shrink-0 px-4 pt-3">
           {view !== 'detail' && view !== 'focus' ? (
             <>
@@ -599,7 +599,7 @@ export function ReadingArtifactCenter({
                   </button>
                 ))}
               </nav>
-              <div className="relative mb-4 flex items-center gap-2">
+              <div data-product-tour="reading-artifact-filters" className="relative mb-4 flex items-center gap-2">
                 <input type="search" value={searchInput} onChange={(event) => {
                   const value = event.target.value
                   setSearchInput(value)

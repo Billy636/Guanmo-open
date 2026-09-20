@@ -1636,6 +1636,7 @@ export const ChatBubble = memo(function ChatBubble({
             <Button
               type="default"
               size="small"
+              data-product-tour="ai-save"
               onClick={() => {
                 showSaveControls()
                 setSaveMenuOpen((open) => !open)

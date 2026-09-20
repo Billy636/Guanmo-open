@@ -75,6 +75,7 @@ export function StatusBar() {
 
       <div className="flex items-center gap-1">
         <StatusAction
+          dataTour="reading-artifact-entry"
           aria-label={databaseEnabled ? '打开阅读成果' : '阅读成果仅桌面版可用'}
           title={databaseEnabled ? '阅读成果' : '阅读成果仅桌面版可用'}
           disabled={!databaseEnabled}

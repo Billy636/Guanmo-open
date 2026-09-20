@@ -174,6 +174,7 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
 
   return (
     <div
+      data-product-tour="sidebar-panel"
       className="animal-cursor gm-instant-color relative flex-shrink-0 bg-gm-surface border-r border-gm-border flex flex-col overflow-hidden"
       style={{ width }}
     >
@@ -234,13 +235,15 @@ export function Sidebar({ collapsed, width, onResizeStart, onOpenSettings, onOpe
       <div className="absolute bottom-0 left-0 right-0 z-20 bg-gm-surface/70 shadow-[0_-8px_24px_0_rgba(61,52,40,0.08)] backdrop-blur-xl">
         <Divider type="line-brown" />
         <div className="flex items-center gap-1 p-2">
-          <Button type="text" size="small" title="打开文件" onClick={handleOpenFile}
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-              </svg>
-            }
-          />
+          <div data-product-tour="open-file">
+            <Button type="text" size="small" title="打开文件" onClick={handleOpenFile}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                </svg>
+              }
+            />
+          </div>
           <Button type="text" size="small" title="搜索" onClick={onOpenSearch}
             icon={
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
