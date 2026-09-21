@@ -140,6 +140,7 @@ class RuntimeResourceTracker {
   private lastLongTaskUserAction: string | null = null
   private currentMode: () => ViewMode = () => 'edit'
   private lastUserAction: string | null = null
+  private rememberActionHandler: ((event: Event) => void) | null = null
   private lastDomNodeCount = 0
   private lastDetachedDomNodes = 0
   private lastMonacoMetrics = {
@@ -268,9 +269,52 @@ class RuntimeResourceTracker {
         : 'window'
       this.lastUserAction = `${event.type}:${target}`.slice(0, 120)
     }
+    this.rememberActionHandler = rememberAction
     for (const type of ['click', 'keydown', 'pointerdown']) {
       native.addEventListener.call(window, type, rememberAction, { capture: true, passive: true })
     }
+  }
+
+  uninstall() {
+    if (!this.installed) return
+    this.installed = false
+    if (this.fpsRaf !== null) native.cancelAnimationFrame(this.fpsRaf)
+    this.fpsRaf = null
+    this.longTaskObserver?.disconnect()
+    this.longTaskObserver = null
+    this.detachObserver?.disconnect()
+    this.detachObserver = null
+    if (this.rememberActionHandler) {
+      for (const type of ['click', 'keydown', 'pointerdown']) {
+        native.removeEventListener.call(window, type, this.rememberActionHandler, { capture: true })
+      }
+      this.rememberActionHandler = null
+    }
+    window.setTimeout = native.setTimeout as typeof window.setTimeout
+    window.clearTimeout = native.clearTimeout as typeof window.clearTimeout
+    window.setInterval = native.setInterval as typeof window.setInterval
+    window.clearInterval = native.clearInterval as typeof window.clearInterval
+    window.requestAnimationFrame = native.requestAnimationFrame as typeof window.requestAnimationFrame
+    window.cancelAnimationFrame = native.cancelAnimationFrame as typeof window.cancelAnimationFrame
+    EventTarget.prototype.addEventListener = native.addEventListener
+    EventTarget.prototype.removeEventListener = native.removeEventListener
+    window.MutationObserver = native.MutationObserver
+    window.ResizeObserver = native.ResizeObserver
+    window.IntersectionObserver = native.IntersectionObserver
+    URL.createObjectURL = native.createObjectURL as typeof URL.createObjectURL
+    URL.revokeObjectURL = native.revokeObjectURL as typeof URL.revokeObjectURL
+    this.listenerRegistry.clear()
+    this.listenerCount = 0
+    this.listenerWindowCount = 0
+    this.listenerDocumentCount = 0
+    this.listenerDomCount = 0
+    this.listenerUnknownCount = 0
+    this.mutationObserverCount = 0
+    this.resizeObserverCount = 0
+    this.intersectionObserverCount = 0
+    this.detachedRefs = []
+    this.fpsFrames = []
+    this.objectUrls.clear()
   }
 
   private incrementCategory(category: 'window' | 'document' | 'dom' | 'unknown') {

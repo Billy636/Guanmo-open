@@ -52,7 +52,7 @@ describe('usePerfMonitor', () => {
     collectorState.onData = null
     vi.clearAllMocks()
     perfCollectorMock.collect.mockResolvedValue(SAMPLE)
-    usePerfStore.setState({ current: null, events: [], isPaused: false })
+    usePerfStore.setState({ current: null, events: [], isPaused: false, enabled: true })
     useEditorStore.setState({ viewMode: 'edit' })
   })
 

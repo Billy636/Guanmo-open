@@ -41,6 +41,12 @@ import {
 } from './answerInstructions'
 import { dropOldestCompleteTurns, isModelContextOverflowError } from '@/services/ai/contextBudget'
 import { extractReadingArtifactReferences, mergeReadingArtifactReferences } from './readingArtifactReferences'
+import {
+  finishAgentTrace,
+  finishAgentTraceSpan,
+  startAgentTrace,
+  startAgentTraceSpan,
+} from '@/services/devAgentDiagnostics'
 
 let toolsRegistered = false
 
@@ -558,6 +564,7 @@ async function executeTool(
   userIntent: string,
   signal?: AbortSignal,
   onProgress?: (stage: AgentProgressStage) => void,
+  diagnosticRunId?: string,
 ): Promise<ToolExecutionResult> {
   const tool = getTool(name)
   if (!tool) {
@@ -590,10 +597,22 @@ async function executeTool(
     return { result, rawResult: result, status: 'tool_error' }
   }
 
-  const execution = await runToolWithTimeout(
-    toolSignal => tool.execute(args, { signal: toolSignal, onProgress }),
-    timeout,
-    signal,
+  const toolSpanId = startAgentTraceSpan(diagnosticRunId, 'tool', { tool: name })
+  let execution: Awaited<ReturnType<typeof runToolWithTimeout>>
+  try {
+    execution = await runToolWithTimeout(
+      toolSignal => tool.execute(args, { signal: toolSignal, onProgress }),
+      timeout,
+      signal,
+    )
+  } catch (error) {
+    finishAgentTraceSpan(diagnosticRunId, toolSpanId, 'error', { result: 'exception' })
+    throw error
+  }
+  finishAgentTraceSpan(
+    diagnosticRunId,
+    toolSpanId,
+    execution.status === 'success' ? 'success' : execution.status === 'tool_error' ? 'error' : execution.status,
   )
   if (execution.status !== 'success') {
     const result = execution.status === 'timeout'
@@ -644,6 +663,7 @@ async function executeToolCalls(
   readResultCache?: Map<string, Promise<ToolExecutionResult>>,
   maxNewToolCalls = Number.POSITIVE_INFINITY,
   allowWriteBeyondBudget = false,
+  diagnosticRunId?: string,
 ): Promise<Array<{ name: string; result: string; rawResult?: string; status?: ToolExecutionResult['status']; executed?: boolean; reused?: boolean }>> {
   // 分离读取类和写入类工具
   const readCalls = toolCalls.filter(tc => isReadTool(tc.name))
@@ -680,7 +700,7 @@ async function executeToolCalls(
           }
         }
         remainingNewToolCalls--
-        const pending = executeTool(tc.name, tc.args, timeout, userIntent, signal, onProgress)
+        const pending = executeTool(tc.name, tc.args, timeout, userIntent, signal, onProgress, diagnosticRunId)
         readResultCache?.set(cacheKey, pending)
         const executed = await pending
         return {
@@ -726,7 +746,7 @@ async function executeToolCalls(
     }
 
     remainingNewToolCalls--
-    const executed = await executeTool(call.name, call.args, timeout, userIntent, signal, onProgress)
+    const executed = await executeTool(call.name, call.args, timeout, userIntent, signal, onProgress, diagnosticRunId)
     let succeeded = false
     try {
       const parsed = JSON.parse(executed.rawResult || executed.result)
@@ -756,7 +776,7 @@ async function executeToolCalls(
       })
     } else {
       if (remainingNewToolCalls > 0) remainingNewToolCalls--
-      const executed = await executeTool(firstWriteCall.name, firstWriteCall.args, timeout, userIntent, signal, onProgress)
+      const executed = await executeTool(firstWriteCall.name, firstWriteCall.args, timeout, userIntent, signal, onProgress, diagnosticRunId)
       results.push({ name: firstWriteCall.name, result: executed.result, rawResult: executed.rawResult, status: executed.status })
     }
   }
@@ -804,7 +824,7 @@ async function runAgentInternal({
   customPreferencePrompt,
   streamEnabled = true,
   routingDecision,
-}: AgentRunRequest, deadlineAt: number): Promise<AgentResult> {
+}: AgentRunRequest, deadlineAt: number, diagnosticRunId?: string): Promise<AgentResult> {
   initAgent()
 
   if (!isAiReady()) {
@@ -979,58 +999,73 @@ async function runAgentInternal({
   const requestAgentCompletion = async () => {
     const send = async (currentMessages: ChatMessage[]) => {
       if (remainingDeadlineMs() <= 0) throw new DOMException('Agent deadline exceeded', 'TimeoutError')
-      if (!streamEnabled) {
-        return client.chat({
+      const modelSpanId = startAgentTraceSpan(diagnosticRunId, 'model_request', {
+        streaming: streamEnabled,
+        messageCount: currentMessages.length,
+      })
+      try {
+        if (!streamEnabled) {
+          const response = await client.chat({
+            messages: currentMessages,
+            signal,
+            temperature,
+            tools: llmTools,
+            toolChoice: 'auto',
+          })
+          finishAgentTraceSpan(diagnosticRunId, modelSpanId, 'success')
+          return response
+        }
+
+        let content = ''
+        const toolCallBuffers = new Map<number, { id?: string; name: string; arguments: string }>()
+
+        for await (const chunk of client.streamChat({
           messages: currentMessages,
           signal,
           temperature,
           tools: llmTools,
           toolChoice: 'auto',
-        })
-      }
-
-      let content = ''
-      const toolCallBuffers = new Map<number, { id?: string; name: string; arguments: string }>()
-
-      for await (const chunk of client.streamChat({
-        messages: currentMessages,
-        signal,
-        temperature,
-        tools: llmTools,
-        toolChoice: 'auto',
-      })) {
-        if (chunk.toolCallDeltas?.length) {
-          for (const delta of chunk.toolCallDeltas) {
-            const current = toolCallBuffers.get(delta.index) || { name: '', arguments: '' }
-            toolCallBuffers.set(delta.index, {
-              id: delta.id || current.id,
-              name: current.name + (delta.name || ''),
-              arguments: current.arguments + (delta.arguments || ''),
-            })
-          }
-        }
-        if (chunk.content) {
-          content += chunk.content
-          onStreamContent?.(content)
-        }
-        if (chunk.done) break
-      }
-
-      return {
-        id: '',
-        content,
-        role: 'assistant' as const,
-        toolCalls: Array.from(toolCallBuffers.values())
-          .filter((call) => call.name)
-          .map((call) => {
-            let args: Record<string, unknown> = {}
-            try {
-              args = call.arguments ? JSON.parse(call.arguments) : {}
-            } catch {
-              args = {}
+        })) {
+          if (chunk.toolCallDeltas?.length) {
+            for (const delta of chunk.toolCallDeltas) {
+              const current = toolCallBuffers.get(delta.index) || { name: '', arguments: '' }
+              toolCallBuffers.set(delta.index, {
+                id: delta.id || current.id,
+                name: current.name + (delta.name || ''),
+                arguments: current.arguments + (delta.arguments || ''),
+              })
             }
-            return { id: call.id, name: call.name, args }
-          }),
+          }
+          if (chunk.content) {
+            content += chunk.content
+            onStreamContent?.(content)
+          }
+          if (chunk.done) break
+        }
+
+        finishAgentTraceSpan(diagnosticRunId, modelSpanId, 'success')
+        return {
+          id: '',
+          content,
+          role: 'assistant' as const,
+          toolCalls: Array.from(toolCallBuffers.values())
+            .filter((call) => call.name)
+            .map((call) => {
+              let args: Record<string, unknown> = {}
+              try {
+                args = call.arguments ? JSON.parse(call.arguments) : {}
+              } catch {
+                args = {}
+              }
+              return { id: call.id, name: call.name, args }
+            }),
+        }
+      } catch (error) {
+        const status = signal?.reason === 'deadline' || error instanceof DOMException && error.name === 'TimeoutError'
+          ? 'timeout'
+          : signal?.aborted ? 'cancelled' : 'error'
+        finishAgentTraceSpan(diagnosticRunId, modelSpanId, status, { error: status })
+        throw error
       }
     }
 
@@ -1093,6 +1128,7 @@ async function runAgentInternal({
       readResultCache,
       Math.max(0, mergedConfig.maxToolCalls - toolCalls),
       false,
+      diagnosticRunId,
     )
 
     for (const { name, result, rawResult, executed } of repairResults) {
@@ -1328,6 +1364,7 @@ async function runAgentInternal({
       readResultCache,
       Math.max(0, mergedConfig.maxToolCalls - toolCalls),
       requiresEditConfirmation && editToolCalls === 0,
+      diagnosticRunId,
     )
 
     // 记录调用的工具
@@ -1419,9 +1456,33 @@ export async function runAgent(request: AgentRunRequest): Promise<AgentResult> {
   if (parentSignal?.aborted) forwardCancellation()
   else parentSignal?.addEventListener('abort', forwardCancellation, { once: true })
   const timer = setTimeout(() => controller.abort('deadline'), deadlineMs)
+  const diagnosticRunId = startAgentTrace({
+    mode: request.routingDecision?.mode ?? 'agent',
+    metadata: {
+      candidateToolCount: request.candidateToolNames?.length ?? 0,
+      streamEnabled: request.streamEnabled !== false,
+      routeMode: request.routingDecision?.mode ?? 'agent',
+      routeReasons: request.routingDecision?.reasonCodes.join(',') ?? 'unknown',
+    },
+  })
 
   try {
-    return await runAgentInternal({ ...request, signal: controller.signal }, deadlineAt)
+    const result = await runAgentInternal({ ...request, signal: controller.signal }, deadlineAt, diagnosticRunId)
+    const status = result.reason === 'deadline'
+      ? 'timeout'
+      : result.reason === 'error'
+        ? (controller.signal.aborted ? 'cancelled' : 'error')
+        : 'completed'
+    finishAgentTrace(diagnosticRunId, status, {
+      reason: result.reason,
+      toolCalls: result.toolCalls,
+      stepCount: result.steps.length,
+    })
+    return result
+  } catch (error) {
+    const status = controller.signal.reason === 'deadline' ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'error'
+    finishAgentTrace(diagnosticRunId, status, { reason: status })
+    throw error
   } finally {
     clearTimeout(timer)
     parentSignal?.removeEventListener('abort', forwardCancellation)

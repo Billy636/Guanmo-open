@@ -102,6 +102,8 @@ export interface AgentRunRequest {
   customPreferencePrompt?: string
   streamEnabled?: boolean
   routingDecision?: RoutingDecision
+  /** 开发模式诊断关联 ID，生产环境为空且不影响执行。 */
+  diagnosticRunId?: string
 }
 
 // --- 统一路由决策 ---

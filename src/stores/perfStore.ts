@@ -56,6 +56,7 @@ const history = new RingBuffer<PerfData>(300)
 let lastUiPublishAt = 0
 
 interface PerfState {
+  enabled: boolean
   current: PerfData | null
   events: PerfEvent[]
   baseline: PerfBaseline | null
@@ -71,6 +72,7 @@ interface PerfState {
   clearHistory: () => void
   toggleCollapsed: () => void
   togglePaused: () => void
+  setEnabled: (enabled: boolean) => void
   setSampleInterval: (interval: SampleIntervalMs) => void
   publishSample: (data: PerfData | null, testPeaks: Partial<Record<keyof PerfData, number>>) => void
 }
@@ -82,6 +84,7 @@ const peakKeys: Array<keyof PerfData> = [
 ]
 
 export const usePerfStore = create<PerfState>((set, get) => ({
+  enabled: false,
   current: null,
   events: [],
   baseline: null,
@@ -113,6 +116,7 @@ export const usePerfStore = create<PerfState>((set, get) => ({
   },
   toggleCollapsed: () => set((state) => ({ isCollapsed: !state.isCollapsed })),
   togglePaused: () => set((state) => ({ isPaused: !state.isPaused })),
+  setEnabled: (enabled) => set({ enabled }),
   setSampleInterval: (sampleIntervalMs) => set((state) => ({
     settings: { ...state.settings, sampleIntervalMs },
   })),
@@ -124,7 +128,7 @@ export const usePerfStore = create<PerfState>((set, get) => ({
 
 export function recordPerfSample(data: PerfData) {
   const state = usePerfStore.getState()
-  if (state.isPaused) return
+  if (!state.enabled || state.isPaused) return
   history.push(data)
   let testPeaks = state.testPeaks
   if (state.testStartedAt !== null) {

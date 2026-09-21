@@ -1,5 +1,6 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
+import { Activity, Bot, Download, Gauge, Pause, Play, Radio, Settings2, Trash2, X } from 'lucide-react'
 import { usePerfMonitor } from '@/hooks/usePerfMonitor'
 import { saveFileDialog, writeFile } from '@/hooks/useTauri'
 import { eventMarker, type PerfEvent } from '@/services/eventMarker'
@@ -8,8 +9,15 @@ import { PERF_SCHEMA_VERSION, withLegacyPerfFields, type PerfData } from '@/serv
 import { getPerfHistory, usePerfStore, type PerfBaseline, type SampleIntervalMs } from '@/stores/perfStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/services/toast'
+import {
+  clearAgentDiagnostics,
+  exportAgentDiagnostics,
+  useAgentDiagnosticsStore,
+  type AgentTraceRecord,
+} from '@/services/devAgentDiagnostics'
 
 type PanelSection = 'overview' | 'processes' | 'resources' | 'context' | 'events'
+type DiagnosticsSection = 'settings' | 'performance' | 'agent'
 
 const EMPTY: PerfData = {
   timestamp: 0,
@@ -363,6 +371,116 @@ function Timeline({ events }: { events: PerfEvent[] }) {
   </div>
 }
 
+function AgentDiagnosticsView({ runs }: { runs: AgentTraceRecord[] }) {
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const selected = runs.find((run) => run.runId === selectedRunId) ?? runs[runs.length - 1]
+  return (
+    <div className="grid min-h-[340px] grid-cols-[230px_1fr] bg-gm-surface-subtle">
+      <div className="border-r border-gm-border-subtle bg-gm-surface/70">
+        <div className="flex items-center gap-1 border-b border-gm-border-subtle px-3 py-2.5">
+          <span className="mr-auto text-[11px] font-semibold uppercase tracking-[0.12em] text-gm-text-muted">最近请求</span>
+          <button type="button" aria-label="导出 Agent 诊断" title="导出 Agent 诊断" className="rounded-lg p-1.5 text-gm-text-muted transition-colors hover:bg-gm-surface-elevated hover:text-gm-text" onClick={exportAgentDiagnostics}><Download size={14} /></button>
+          <button type="button" aria-label="清空 Agent 诊断" title="清空 Agent 诊断" className="rounded-lg p-1.5 text-gm-text-muted transition-colors hover:bg-red-50 hover:text-red-600" onClick={() => { clearAgentDiagnostics(); setSelectedRunId(null) }}><Trash2 size={14} /></button>
+        </div>
+        {runs.slice().reverse().map((run) => (
+          <button type="button" key={run.runId} className={`block w-full border-b border-gm-border-subtle px-3 py-2.5 text-left transition-colors ${selected?.runId === run.runId ? 'bg-gm-primary-subtle/45 text-gm-text' : 'text-gm-text-muted hover:bg-gm-surface-elevated'}`} onClick={() => setSelectedRunId(run.runId)}>
+            <div className="flex items-center gap-2 text-[12px] font-medium"><span className={`h-1.5 w-1.5 rounded-full ${run.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}`} />{run.mode === 'agent' ? 'Agent' : 'Direct'}<span className="ml-auto font-mono text-[10px] text-gm-text-muted">{run.durationMs?.toFixed(1) ?? '—'}ms</span></div>
+            <div className="mt-1 text-[10px] text-gm-text-muted">{run.status} · {run.spans.length} spans</div>
+          </button>
+        ))}
+        {!runs.length && <div className="p-5 text-center text-[11px] leading-5 text-gm-text-muted">开启 Agent 检测后，<br />请求流程会出现在这里</div>}
+      </div>
+      <div className="overflow-auto p-4">
+        {selected ? (
+          <>
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-gm-border-subtle bg-gm-surface p-2.5"><div className="text-[10px] text-gm-text-muted">总耗时</div><div className="mt-1 font-mono text-sm text-gm-text">{selected.durationMs?.toFixed(1) ?? '—'}<span className="ml-1 text-[10px] text-gm-text-muted">ms</span></div></div>
+              <div className="rounded-xl border border-gm-border-subtle bg-gm-surface p-2.5"><div className="text-[10px] text-gm-text-muted">状态</div><div className="mt-1 text-sm text-gm-text">{selected.status}</div></div>
+              <div className="rounded-xl border border-gm-border-subtle bg-gm-surface p-2.5"><div className="text-[10px] text-gm-text-muted">步骤</div><div className="mt-1 font-mono text-sm text-gm-text">{selected.spans.length}</div></div>
+            </div>
+            <div className="mb-3 rounded-xl border border-gm-border-subtle bg-gm-surface px-3 py-2 text-[11px] text-gm-text-muted">路由 <span className="font-medium text-gm-text">{String(selected.metadata.routeMode ?? 'unknown')}</span><span className="mx-2 text-gm-border">·</span>原因 <span className="font-medium text-gm-text">{String(selected.metadata.routeReasons ?? 'unknown')}</span></div>
+            <div className="overflow-hidden rounded-xl border border-gm-border-subtle bg-gm-surface">
+              <div className="grid grid-cols-[1fr_76px_76px_120px] gap-2 border-b border-gm-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-gm-text-muted"><span>阶段</span><span>开始</span><span>耗时</span><span>结果</span></div>
+              {selected.spans.map((span) => (
+                <div key={span.spanId} className="grid grid-cols-[1fr_76px_76px_120px] gap-2 border-b border-gm-border-subtle px-3 py-2 text-[11px] last:border-b-0">
+                  <span className="truncate font-medium text-gm-text">{span.metadata?.tool ? String(span.metadata.tool) : span.phase}</span>
+                  <span className="font-mono text-[10px] text-gm-text-muted">{(span.startedAt - selected.startedAt).toFixed(1)}ms</span>
+                  <span className="font-mono text-[10px] text-gm-text-muted">{span.durationMs?.toFixed(1) ?? '—'}ms</span>
+                  <span className={span.status === 'success' ? 'text-emerald-600' : 'text-amber-600'}>{span.status}{span.metadata?.error ? ` · ${String(span.metadata.error)}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <div className="flex min-h-[300px] flex-col items-center justify-center text-center text-gm-text-muted"><Bot size={24} strokeWidth={1.5} /><p className="mt-2 text-[12px]">选择一条 Agent 请求查看流程</p></div>}
+      </div>
+    </div>
+  )
+}
+
+function ToggleSwitch({ enabled, onToggle, label }: { enabled: boolean; onToggle: () => void; label: string }) {
+  return <button type="button" role="switch" aria-label={label} aria-checked={enabled} onClick={onToggle} className={`relative h-6 w-11 rounded-full transition-colors ${enabled ? 'bg-gm-primary' : 'bg-gm-border'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'left-6' : 'left-1'}`} /></button>
+}
+
+function SettingCard({ icon, title, description, enabled, onToggle, accent, detail }: { icon: ReactNode; title: string; description: string; enabled: boolean; onToggle: () => void; accent: string; detail: string }) {
+  return <div className="flex items-start gap-3 rounded-2xl border border-gm-border-subtle bg-gm-surface p-4 shadow-[0_8px_24px_rgba(61,52,40,0.05)]"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accent}`}>{icon}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold text-gm-text">{title}</h3><span className={`rounded-full px-2 py-0.5 text-[10px] ${enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gm-surface-subtle text-gm-text-muted'}`}>{enabled ? '运行中' : '已关闭'}</span></div><p className="mt-1 text-[11px] leading-5 text-gm-text-muted">{description}</p><p className="mt-2 text-[10px] text-gm-text-muted">{enabled ? detail : '开启后才会收集数据'}</p></div><ToggleSwitch enabled={enabled} onToggle={onToggle} label={`开启${title}`} /></div>
+}
+
+function DisabledState({ icon, title, description, onEnable }: { icon: ReactNode; title: string; description: string; onEnable: () => void }) {
+  return <div className="flex min-h-[390px] flex-col items-center justify-center bg-gm-surface-subtle px-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gm-surface text-gm-text-muted shadow-[0_8px_24px_rgba(61,52,40,0.06)]">{icon}</div><h2 className="mt-4 text-base font-semibold text-gm-text">{title}</h2><p className="mt-1 max-w-sm text-[12px] leading-5 text-gm-text-muted">{description}</p><button type="button" className="mt-5 rounded-xl bg-gm-primary px-4 py-2 text-[12px] font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5" onClick={onEnable}>立即开启</button></div>
+}
+
+function CollapsedDiagnosticEntry({
+  performanceEnabled,
+  agentEnabled,
+  current,
+  latestRun,
+  onOpen,
+}: {
+  performanceEnabled: boolean
+  agentEnabled: boolean
+  current: PerfData | null
+  latestRun?: AgentTraceRecord
+  onOpen: () => void
+}) {
+  const hasEnabledDetection = performanceEnabled || agentEnabled
+  const enabledLabels = [performanceEnabled ? '性能检测' : null, agentEnabled ? 'Agent 检测' : null].filter(Boolean).join('、')
+  const agentStatus = latestRun?.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+
+  return (
+    <button
+      type="button"
+      aria-label={`打开开发诊断${enabledLabels ? `；已开启${enabledLabels}` : ''}`}
+      title={enabledLabels ? `开发诊断 · ${enabledLabels}` : '开发诊断'}
+      className={`fixed bottom-5 right-5 z-[9999] flex items-center border border-gm-border bg-gm-surface/95 text-gm-text shadow-[0_10px_30px_rgba(61,52,40,0.16)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-gm-primary hover:text-gm-primary ${hasEnabledDetection ? 'min-h-11 max-w-[calc(100vw-40px)] gap-1.5 rounded-2xl p-1.5' : 'h-11 w-11 justify-center rounded-2xl'}`}
+      onClick={onOpen}
+    >
+      {!hasEnabledDetection ? (
+        <>
+          <Activity size={18} strokeWidth={1.8} />
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-gm-border" />
+        </>
+      ) : (
+        <>
+          {performanceEnabled && (
+            <span className="flex min-w-0 items-center gap-1 rounded-xl bg-blue-50 px-2 py-1.5 text-[10px] font-medium text-blue-700">
+              <Gauge size={12} strokeWidth={2} />
+              <span className="whitespace-nowrap">内存 {current ? formatKb(current.appPrivateWorkingSetKb) : '—'}</span>
+              <span className="whitespace-nowrap text-blue-600/70">· CPU {current ? `${current.cpuNormalizedPercent.toFixed(1)}%` : '—'}</span>
+            </span>
+          )}
+          {agentEnabled && (
+            <span className="flex min-w-0 items-center gap-1 rounded-xl bg-amber-50 px-2 py-1.5 text-[10px] font-medium text-amber-700">
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${latestRun ? agentStatus : 'bg-amber-300'}`} />
+              <span className="whitespace-nowrap">Agent</span>
+              <span className="whitespace-nowrap font-mono">{latestRun?.durationMs !== undefined ? `${latestRun.durationMs.toFixed(0)}ms` : '—'}</span>
+            </span>
+          )}
+        </>
+      )}
+    </button>
+  )
+}
+
 export function PerfMonitorPanel() {
   const renderStartedAt = performance.now()
   usePerfMonitor()
@@ -373,6 +491,11 @@ export function PerfMonitorPanel() {
   const settings = usePerfStore((state) => state.settings)
   const isCollapsed = usePerfStore((state) => state.isCollapsed)
   const isPaused = usePerfStore((state) => state.isPaused)
+  const performanceEnabled = usePerfStore((state) => state.enabled)
+  const agentEnabled = useAgentDiagnosticsStore((state) => state.enabled)
+  const runs = useAgentDiagnosticsStore((state) => state.runs)
+  const latestAgentRun = runs[runs.length - 1]
+  const [diagnosticsSection, setDiagnosticsSection] = useState<DiagnosticsSection>('settings')
   const [section, setSection] = useState<PanelSection>('overview')
   const data = current ?? EMPTY
   const tabs = useMemo<Array<[PanelSection, string]>>(() => [['overview', '概览'], ['processes', 'WebView2 进程'], ['resources', '前端资源'], ['context', '文档负载'], ['events', '事件时间线']], [])
@@ -397,31 +520,23 @@ export function PerfMonitorPanel() {
   }, [])
 
   if (!import.meta.env.DEV) return null
-  if (isCollapsed) return <button className="fixed bottom-4 right-4 z-[9999] rounded border border-gray-700 bg-gray-900/95 px-3 py-2 font-mono text-xs text-white" onClick={usePerfStore.getState().toggleCollapsed}>性能 {formatKb(data.appPrivateWorkingSetKb)} · {data.cpuNormalizedPercent.toFixed(1)}%</button>
+  if (isCollapsed) return <CollapsedDiagnosticEntry performanceEnabled={performanceEnabled} agentEnabled={agentEnabled} current={current} latestRun={latestAgentRun} onOpen={usePerfStore.getState().toggleCollapsed} />
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999] w-[760px] rounded-lg border border-gray-700 bg-gray-900/95 font-mono text-xs text-gray-200 shadow-2xl" style={{ userSelect: 'none' }}>
-      <div className="flex items-center gap-2 border-b border-gray-700 px-3 py-2">
-        <strong className="mr-auto text-white">性能实时监测</strong>
-        <select aria-label="采样频率" className="rounded bg-gray-800 px-1 py-0.5" value={settings.sampleIntervalMs} onChange={(event) => usePerfStore.getState().setSampleInterval(Number(event.target.value) as SampleIntervalMs)}>
-          <option value={5000}>5s</option><option value={1000}>1s（60秒）</option><option value={500}>500ms（60秒）</option><option value={250}>250ms（60秒）</option>
-        </select>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={usePerfStore.getState().togglePaused}>{isPaused ? '继续' : '暂停'}</button>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={usePerfStore.getState().toggleCollapsed}>收起</button>
+    <div className="fixed bottom-5 right-5 z-[9999] flex max-h-[min(760px,calc(100vh-40px))] w-[min(880px,calc(100vw-40px))] flex-col overflow-hidden rounded-[24px] border border-gm-border bg-gm-surface/95 font-sans text-gm-text shadow-[0_24px_70px_rgba(61,52,40,0.2)] backdrop-blur-2xl" style={{ userSelect: 'none' }}>
+      <div className="flex items-center gap-3 border-b border-gm-border-subtle px-5 py-4">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gm-primary-subtle text-gm-primary"><Activity size={18} /></div>
+        <div className="mr-auto"><div className="text-sm font-semibold tracking-tight">开发诊断</div><div className="mt-0.5 text-[11px] text-gm-text-muted">只在开发模式运行 · 数据仅保留在当前会话</div></div>
+        <div className="hidden items-center gap-1.5 text-[10px] text-gm-text-muted sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${performanceEnabled || agentEnabled ? 'bg-emerald-500' : 'bg-gm-border'}`} />{performanceEnabled || agentEnabled ? '检测中' : '未启用'}</div>
+        <button type="button" aria-label="关闭开发诊断" title="关闭" className="rounded-xl p-2 text-gm-text-muted transition-colors hover:bg-gm-surface-subtle hover:text-gm-text" onClick={usePerfStore.getState().toggleCollapsed}><X size={17} /></button>
       </div>
-      <div className="flex border-b border-gray-700">{tabs.map(([key, label]) => <button key={key} className={`px-3 py-2 ${section === key ? 'border-b-2 border-blue-400 text-white' : 'text-gray-400'}`} onClick={() => setSection(key)}>{label}</button>)}</div>
-      {section === 'overview' && <Overview data={data} baseline={baseline} peaks={peaks} />}
-      {section === 'processes' && <Processes data={data} />}
-      {section === 'resources' && <Resources data={data} />}
-      {section === 'context' && <DocumentContext data={data} />}
-      {section === 'events' && <Timeline events={events} />}
-      <div className="flex gap-1 border-t border-gray-700 p-2">
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={() => setBaseline('idle')}>设置空闲基线</button>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={() => setBaseline('document')}>设置当前文档基线</button>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={usePerfStore.getState().clearBaseline}>清除基线</button>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={usePerfStore.getState().startTest}>开始操作测试</button>
-        <button className="rounded bg-gray-700 px-2 py-1" onClick={() => { eventMarker.mark('memory-snapshot'); void handleExport() }}>导出 JSON</button>
-        <button className="ml-auto rounded bg-gray-700 px-2 py-1" onClick={() => { eventMarker.clearEvents(); usePerfStore.getState().clearHistory() }}>清空记录</button>
+      <div className="flex border-b border-gm-border-subtle px-3 pt-1">
+        {([['settings', '设置', Settings2], ['performance', '性能检测', Gauge], ['agent', 'Agent 检测', Bot]] as const).map(([key, label, Icon]) => <button type="button" key={key} className={`relative flex items-center gap-1.5 px-3 py-3 text-[12px] font-medium transition-colors ${diagnosticsSection === key ? 'text-gm-text' : 'text-gm-text-muted hover:text-gm-text'}`} onClick={() => setDiagnosticsSection(key)}><Icon size={14} />{label}{key === 'performance' && performanceEnabled ? <span className="h-1.5 w-1.5 rounded-full bg-gm-primary" /> : null}{key === 'agent' && agentEnabled ? <span className="h-1.5 w-1.5 rounded-full bg-gm-primary" /> : null}{diagnosticsSection === key && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-gm-primary" />}</button>)}
+      </div>
+      <div className="min-h-0 overflow-auto">
+        {diagnosticsSection === 'settings' && <div className="space-y-4 bg-gm-surface-subtle p-5"><div><div className="text-lg font-semibold tracking-tight text-gm-text">选择要观察的信号</div><p className="mt-1 text-[12px] leading-5 text-gm-text-muted">检测默认关闭。只开启当前要排查的链路，减少额外开销和噪声。</p></div><div className="grid gap-3 md:grid-cols-2"><SettingCard icon={<Gauge size={19} />} title="性能检测" description="采集 WebView、进程、资源和事件时间线。关闭时不会安装全局资源追踪器。" enabled={performanceEnabled} onToggle={() => usePerfStore.getState().setEnabled(!performanceEnabled)} accent="bg-blue-50 text-blue-600" detail={`采样间隔 ${settings.sampleIntervalMs}ms`} /><SettingCard icon={<Bot size={19} />} title="Agent 检测" description="记录模型请求、工具执行、路由原因和每个阶段的耗时。不会保存对话正文。" enabled={agentEnabled} onToggle={() => useAgentDiagnosticsStore.getState().setEnabled(!agentEnabled)} accent="bg-amber-50 text-amber-600" detail={`${runs.length} 条请求记录`} /></div><div className="flex items-center gap-2 rounded-xl border border-dashed border-gm-border bg-gm-surface px-3 py-2.5 text-[11px] text-gm-text-muted"><Radio size={14} className="text-gm-primary" />建议只在复现问题时开启对应检测，完成后关闭。</div></div>}
+        {diagnosticsSection === 'performance' && <>{!performanceEnabled ? <DisabledState icon={<Gauge size={24} />} title="性能检测未开启" description="在“设置”中开启性能检测后，这里才会显示采样和资源数据。" onEnable={() => usePerfStore.getState().setEnabled(true)} /> : <div className="bg-gm-surface-subtle"><div className="flex flex-wrap items-center gap-2 border-b border-gm-border-subtle px-5 py-3"><div className="mr-auto flex items-center gap-2 text-[11px] text-gm-text-muted"><span className="h-2 w-2 rounded-full bg-emerald-500" />实时采样</div><select aria-label="采样频率" className="rounded-lg border border-gm-border-subtle bg-gm-surface px-2 py-1.5 text-[11px] text-gm-text outline-none" value={settings.sampleIntervalMs} onChange={(event) => usePerfStore.getState().setSampleInterval(Number(event.target.value) as SampleIntervalMs)}><option value={5000}>5s</option><option value={1000}>1s（60秒）</option><option value={500}>500ms（60秒）</option><option value={250}>250ms（60秒）</option></select><button type="button" className="flex items-center gap-1.5 rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text transition-colors hover:border-gm-primary" onClick={usePerfStore.getState().togglePaused}>{isPaused ? <Play size={13} /> : <Pause size={13} />}{isPaused ? '继续' : '暂停'}</button><button type="button" className="flex items-center gap-1.5 rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text transition-colors hover:border-gm-primary" onClick={() => { eventMarker.mark('memory-snapshot'); void handleExport() }}><Download size={13} />导出 JSON</button></div><div className="flex gap-1 overflow-x-auto border-b border-gm-border-subtle px-4 pt-1">{tabs.map(([key, label]) => <button type="button" key={key} className={`whitespace-nowrap px-3 py-2.5 text-[11px] font-medium ${section === key ? 'border-b-2 border-gm-primary text-gm-text' : 'text-gm-text-muted'}`} onClick={() => setSection(key)}>{label}</button>)}</div>{section === 'overview' && <Overview data={data} baseline={baseline} peaks={peaks} />}{section === 'processes' && <Processes data={data} />}{section === 'resources' && <Resources data={data} />}{section === 'context' && <DocumentContext data={data} />}{section === 'events' && <Timeline events={events} />}<div className="flex flex-wrap gap-2 border-t border-gm-border-subtle px-5 py-3"><button type="button" className="rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text-muted hover:text-gm-text" onClick={() => setBaseline('idle')}>设置空闲基线</button><button type="button" className="rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text-muted hover:text-gm-text" onClick={() => setBaseline('document')}>设置文档基线</button><button type="button" className="rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text-muted hover:text-gm-text" onClick={usePerfStore.getState().clearBaseline}>清除基线</button><button type="button" className="ml-auto rounded-lg border border-gm-border-subtle bg-gm-surface px-2.5 py-1.5 text-[11px] text-gm-text-muted hover:text-gm-text" onClick={() => { eventMarker.clearEvents(); usePerfStore.getState().clearHistory() }}><Trash2 size={13} className="mr-1 inline-block" />清空记录</button></div></div>}</>}
+        {diagnosticsSection === 'agent' && <>{!agentEnabled ? <DisabledState icon={<Bot size={24} />} title="Agent 检测未开启" description="在“设置”中开启 Agent 检测后，这里才会记录每次模型和工具流程。" onEnable={() => useAgentDiagnosticsStore.getState().setEnabled(true)} /> : <AgentDiagnosticsView runs={runs} />}</>}
       </div>
     </div>
   )

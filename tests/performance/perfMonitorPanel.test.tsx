@@ -11,6 +11,7 @@ vi.mock('@/hooks/usePerfMonitor', () => ({ usePerfMonitor: vi.fn() }))
 
 import { PerfMonitorPanel } from '@/components/devtools/PerfMonitorPanel'
 import type { PerfData } from '@/services/perfTypes'
+import { useAgentDiagnosticsStore } from '@/services/devAgentDiagnostics'
 import { recordPerfSample, usePerfStore } from '@/stores/perfStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -26,12 +27,55 @@ describe('PerfMonitorPanel export', () => {
       testStartedAt: null,
       testPeaks: {},
       isPaused: false,
+      enabled: true,
     })
+    useAgentDiagnosticsStore.setState({ enabled: false, runs: [] })
+  })
+
+  it('收起态只展示已开启检测的关键数据', () => {
+    usePerfStore.setState({
+      isCollapsed: true,
+      current: {
+        timestamp: 1,
+        appPrivateWorkingSetKb: 1024,
+        cpuNormalizedPercent: 12.3,
+      } as PerfData,
+    })
+    useAgentDiagnosticsStore.setState({
+      enabled: true,
+      runs: [{
+        runId: 'run-1',
+        startedAt: 0,
+        durationMs: 42,
+        status: 'completed',
+        mode: 'agent',
+        metadata: {},
+        spans: [],
+      }],
+    })
+
+    render(<PerfMonitorPanel />)
+
+    expect(screen.getByText(/内存/)).toBeInTheDocument()
+    expect(screen.getByText(/CPU 12\.3%/)).toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
+    expect(screen.getByText('42ms')).toBeInTheDocument()
+  })
+
+  it('两个检测都关闭时收起态只保留入口图标', () => {
+    usePerfStore.setState({ isCollapsed: true, enabled: false })
+
+    render(<PerfMonitorPanel />)
+
+    expect(screen.getByRole('button', { name: '打开开发诊断' })).toBeInTheDocument()
+    expect(screen.queryByText('Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText(/内存/)).not.toBeInTheDocument()
   })
 
   it('通过系统保存对话框导出 JSON 到授权路径', async () => {
     render(<PerfMonitorPanel />)
 
+    fireEvent.click(screen.getByRole('button', { name: '性能检测' }))
     fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
 
     await waitFor(() => expect(fileApi.saveFileDialog).toHaveBeenCalledTimes(1))
@@ -45,6 +89,7 @@ describe('PerfMonitorPanel export', () => {
     fileApi.saveFileDialog.mockResolvedValue(null)
     render(<PerfMonitorPanel />)
 
+    fireEvent.click(screen.getByRole('button', { name: '性能检测' }))
     fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
 
     await waitFor(() => expect(fileApi.saveFileDialog).toHaveBeenCalledTimes(1))
@@ -57,6 +102,7 @@ describe('PerfMonitorPanel export', () => {
     }))
     render(<PerfMonitorPanel />)
 
+    fireEvent.click(screen.getByRole('button', { name: '性能检测' }))
     fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
     await waitFor(() => expect(fileApi.writeFile).toHaveBeenCalledTimes(1))
     const report = JSON.parse(fileApi.writeFile.mock.calls[0][1] as string)
@@ -93,6 +139,7 @@ describe('PerfMonitorPanel export', () => {
     first.unmount()
     render(<PerfMonitorPanel />)
 
+    fireEvent.click(screen.getByRole('button', { name: '性能检测' }))
     fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
     await waitFor(() => expect(fileApi.writeFile).toHaveBeenCalledTimes(1))
     const report = JSON.parse(fileApi.writeFile.mock.calls[0][1] as string)

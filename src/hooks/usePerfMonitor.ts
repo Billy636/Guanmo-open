@@ -4,6 +4,7 @@ import { eventMarker } from '@/services/eventMarker'
 import { recordPerfSample, usePerfStore } from '@/stores/perfStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useAppStore } from '@/stores/appStore'
+import { runtimeResourceTracker } from '@/services/runtimeResourceTracker'
 
 /** Cancelable delayed snapshot for mode-settled events. */
 function useModeSettledTimer() {
@@ -43,9 +44,10 @@ function useModeSettledTimer() {
 
 export function usePerfMonitor() {
   const modeSettled = useModeSettledTimer()
+  const enabled = usePerfStore((state) => state.enabled)
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!import.meta.env.DEV || !enabled) return
 
     perfCollector.setSources({
       getCurrentMode: () => useEditorStore.getState().viewMode,
@@ -144,6 +146,7 @@ export function usePerfMonitor() {
 
     return () => {
       perfCollector.dispose()
+      runtimeResourceTracker.uninstall()
       modeSettled.cancel()
       if (pendingModeComplete !== null) cancelAnimationFrame(pendingModeComplete)
       unsubscribeSettings()
@@ -153,5 +156,5 @@ export function usePerfMonitor() {
       unsubscribeApp()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [enabled])
 }
