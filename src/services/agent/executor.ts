@@ -999,6 +999,7 @@ async function runAgentInternal({
   const requestAgentCompletion = async () => {
     const send = async (currentMessages: ChatMessage[]) => {
       if (remainingDeadlineMs() <= 0) throw new DOMException('Agent deadline exceeded', 'TimeoutError')
+      const canStreamAnswer = checkRequiredCapabilities(mergedRequired, calledToolNames).length === 0
       const modelSpanId = startAgentTraceSpan(diagnosticRunId, 'model_request', {
         streaming: streamEnabled,
         messageCount: currentMessages.length,
@@ -1038,7 +1039,7 @@ async function runAgentInternal({
           }
           if (chunk.content) {
             content += chunk.content
-            onStreamContent?.(content)
+            if (canStreamAnswer) onStreamContent?.(content)
           }
           if (chunk.done) break
         }
@@ -1456,7 +1457,8 @@ export async function runAgent(request: AgentRunRequest): Promise<AgentResult> {
   if (parentSignal?.aborted) forwardCancellation()
   else parentSignal?.addEventListener('abort', forwardCancellation, { once: true })
   const timer = setTimeout(() => controller.abort('deadline'), deadlineMs)
-  const diagnosticRunId = startAgentTrace({
+  const ownsDiagnosticTrace = !('diagnosticRunId' in request)
+  const diagnosticRunId = ownsDiagnosticTrace ? startAgentTrace({
     mode: request.routingDecision?.mode ?? 'agent',
     metadata: {
       candidateToolCount: request.candidateToolNames?.length ?? 0,
@@ -1464,7 +1466,7 @@ export async function runAgent(request: AgentRunRequest): Promise<AgentResult> {
       routeMode: request.routingDecision?.mode ?? 'agent',
       routeReasons: request.routingDecision?.reasonCodes.join(',') ?? 'unknown',
     },
-  })
+  }) : request.diagnosticRunId
 
   try {
     const result = await runAgentInternal({ ...request, signal: controller.signal }, deadlineAt, diagnosticRunId)
@@ -1473,15 +1475,17 @@ export async function runAgent(request: AgentRunRequest): Promise<AgentResult> {
       : result.reason === 'error'
         ? (controller.signal.aborted ? 'cancelled' : 'error')
         : 'completed'
-    finishAgentTrace(diagnosticRunId, status, {
-      reason: result.reason,
-      toolCalls: result.toolCalls,
-      stepCount: result.steps.length,
-    })
+    if (ownsDiagnosticTrace) {
+      finishAgentTrace(diagnosticRunId, status, {
+        reason: result.reason,
+        toolCalls: result.toolCalls,
+        stepCount: result.steps.length,
+      })
+    }
     return result
   } catch (error) {
     const status = controller.signal.reason === 'deadline' ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'error'
-    finishAgentTrace(diagnosticRunId, status, { reason: status })
+    if (ownsDiagnosticTrace) finishAgentTrace(diagnosticRunId, status, { reason: status })
     throw error
   } finally {
     clearTimeout(timer)

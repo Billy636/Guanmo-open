@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AiProvider, ChatRequest, ChatResponse, StreamChunk } from '@/services/ai/types'
 import { decodeAgentStepEvent, decodeKnowledgeSearchOutcome } from '@/services/agent/session'
+import { clearAgentDiagnostics, finishAgentTrace, startAgentTrace, useAgentDiagnosticsStore } from '@/services/devAgentDiagnostics'
 
 const responseQueue: StreamChunk[][] = []
 const streamChat = vi.fn(async function* (_request: ChatRequest) {
@@ -58,6 +59,8 @@ describe('Agent execution budget', () => {
   })
 
   beforeEach(() => {
+    useAgentDiagnosticsStore.getState().setEnabled(false)
+    clearAgentDiagnostics()
     responseQueue.length = 0
     streamChat.mockClear()
     executeAnonymousRead.mockClear()
@@ -109,6 +112,46 @@ describe('Agent execution budget', () => {
     expect(result.finalMessages).toBeUndefined()
     expect(onStreamContent).toHaveBeenNthCalledWith(1, '匿名')
     expect(onStreamContent).toHaveBeenNthCalledWith(2, '匿名最终答案')
+  })
+
+  it('外部请求持有诊断 Trace 时，执行器记录模型阶段但不提前结束请求', async () => {
+    responseQueue.push(
+      [{ content: '', done: true, toolCallDeltas: [{ index: 0, name: 'get_current_time', arguments: '{}' }] }],
+      [{ content: '匿名回答', done: true }],
+    )
+    useAgentDiagnosticsStore.getState().setEnabled(true)
+    const diagnosticRunId = startAgentTrace({ mode: 'agent' })
+
+    const result = await runAgent({
+      query: '匿名请求',
+      candidateToolNames: ['get_current_time'],
+      requiredCapabilities: ['time'],
+      diagnosticRunId,
+    })
+
+    expect(result.reason).toBe('completed')
+    expect(useAgentDiagnosticsStore.getState().runs).toHaveLength(0)
+    finishAgentTrace(diagnosticRunId, 'completed')
+    expect(useAgentDiagnosticsStore.getState().runs).toHaveLength(1)
+    expect(useAgentDiagnosticsStore.getState().runs[0].runId).toBe(diagnosticRunId)
+    expect(useAgentDiagnosticsStore.getState().runs[0].spans[0].phase).toBe('model_request')
+  })
+
+  it('外部诊断 ID 为空时，执行器不会在开关重入后另建请求', async () => {
+    responseQueue.push(
+      [{ content: '', done: true, toolCallDeltas: [{ index: 0, name: 'get_current_time', arguments: '{}' }] }],
+      [{ content: '匿名回答', done: true }],
+    )
+    useAgentDiagnosticsStore.getState().setEnabled(true)
+
+    await runAgent({
+      query: '匿名请求',
+      candidateToolNames: ['get_current_time'],
+      requiredCapabilities: ['time'],
+      diagnosticRunId: undefined,
+    })
+
+    expect(useAgentDiagnosticsStore.getState().runs).toHaveLength(0)
   })
 
   it('工具返回后二次请求重新装箱且工具只执行一次', async () => {

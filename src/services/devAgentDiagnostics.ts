@@ -47,7 +47,10 @@ const activeTraces = new Map<string, ActiveTrace>()
 export const useAgentDiagnosticsStore = create<AgentDiagnosticsState>((set) => ({
   enabled: false,
   runs: [],
-  setEnabled: (enabled) => set({ enabled }),
+  setEnabled: (enabled) => {
+    if (!enabled) activeTraces.clear()
+    set({ enabled })
+  },
   addRun: (record) => set((state) => ({ runs: [...state.runs, record].slice(-MAX_RUNS) })),
   clear: () => set({ runs: [] }),
 }))

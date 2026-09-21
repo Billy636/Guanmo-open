@@ -41,4 +41,20 @@ describe('开发模式 Agent 诊断', () => {
     expect(run.spans[0].status).toBe('timeout')
     expect(run.spans[0].durationMs).toEqual(expect.any(Number))
   })
+
+  it('中途关闭后丢弃进行中的请求，重新开启也不会补记旧请求', () => {
+    useAgentDiagnosticsStore.getState().setEnabled(true)
+    const oldRunId = startAgentTrace({ mode: 'agent' })
+    startAgentTraceSpan(oldRunId, 'model_request')
+
+    useAgentDiagnosticsStore.getState().setEnabled(false)
+    useAgentDiagnosticsStore.getState().setEnabled(true)
+    finishAgentTrace(oldRunId, 'completed')
+
+    expect(useAgentDiagnosticsStore.getState().runs).toHaveLength(0)
+    const newRunId = startAgentTrace({ mode: 'direct' })
+    finishAgentTrace(newRunId, 'completed')
+    expect(useAgentDiagnosticsStore.getState().runs).toHaveLength(1)
+    expect(useAgentDiagnosticsStore.getState().runs[0].mode).toBe('direct')
+  })
 })

@@ -29,6 +29,7 @@ import {
   toContextTagSources,
 } from '@/services/agent/sourceMetadata'
 import { READING_REMINDER_FEATURE_AVAILABLE } from '@/services/readingReminderFeature'
+import { finishAgentTrace, finishAgentTraceSpan, startAgentTrace, startAgentTraceSpan, type AgentTraceStatus } from '@/services/devAgentDiagnostics'
 
 export function getAgentProgressText(step: AgentStep): string {
   if (step.type === 'progress') {
@@ -383,8 +384,21 @@ export function useAiChat() {
 
       const activeClient = getAiClient()
       const modelHistory: ChatMessage[] = prepareChatHistoryForModel(messages)
+      const diagnosticMetadata = {
+        routeMode: routingDecision.mode,
+        routeReasons: routingDecision.reasonCodes.join(','),
+        candidateToolCount: candidateToolNames.length,
+        streamEnabled: ai.streamEnabled,
+      }
+      const agentDiagnosticRunId = useAgentMode
+        ? startAgentTrace({ mode: 'agent', metadata: diagnosticMetadata })
+        : undefined
 
       const executeAgentRequest = async () => {
+        let diagnosticStatus: AgentTraceStatus = 'completed'
+        let diagnosticReason = 'completed'
+        let diagnosticToolCalls = 0
+        let diagnosticStepCount = 0
         clearAgentSteps()
         initAgent()
         const planningText = routingDecision.requiresEditConfirmation
@@ -514,7 +528,12 @@ export function useAiChat() {
 
         try {
           setAgentScopeContext({ contextTags: contextTags || [], editTargets })
-          const result = await runAgent(agentRequest.request)
+          const result = await runAgent({ ...agentRequest.request, diagnosticRunId: agentDiagnosticRunId })
+          diagnosticReason = result.reason
+          diagnosticToolCalls = result.toolCalls
+          diagnosticStepCount = result.steps.length
+          if (result.reason === 'deadline') diagnosticStatus = 'timeout'
+          else if (result.reason === 'error') diagnosticStatus = 'error'
           if (!isCurrentRequest()) return
           if (candidateToolNames.length > 0) {
             setAgentTaskContext(createAgentTaskContext({
@@ -552,6 +571,7 @@ export function useAiChat() {
             updateRequestMessage('正在生成最终回答...')
             addTimelineItem({ type: 'answer_streaming', label: '生成最终回答' })
 
+            const finalAnswerSpanId = startAgentTraceSpan(agentDiagnosticRunId, 'final_answer', { streaming: ai.streamEnabled })
             await streamFinalAnswer({
               client,
               messages: finalAnswerMessages,
@@ -563,6 +583,7 @@ export function useAiChat() {
               temperature: SYSTEM_TEMPERATURE.agentAnswer,
               reasoningMode,
             })
+            finishAgentTraceSpan(agentDiagnosticRunId, finalAnswerSpanId, isCurrentRequest() ? 'success' : 'cancelled')
 
             if (!isCurrentRequest()) {
               addTimelineItem({ type: 'error', label: '已停止生成最终回答' })
@@ -599,6 +620,8 @@ export function useAiChat() {
             )
           }
         } catch (err) {
+          diagnosticStatus = 'error'
+          diagnosticReason = 'error'
           if (!isCurrentRequest()) return
           const msg = err instanceof Error ? err.message : String(err)
           if (candidateToolNames.length > 0) {
@@ -616,6 +639,11 @@ export function useAiChat() {
           setError(`Agent 执行失败：${msg}`)
           addTimelineItem({ type: 'error', label: 'Agent 执行失败', detail: msg })
         } finally {
+          finishAgentTrace(
+            agentDiagnosticRunId,
+            requestController.signal.aborted ? 'cancelled' : diagnosticStatus,
+            { reason: diagnosticReason, toolCalls: diagnosticToolCalls, stepCount: diagnosticStepCount },
+          )
           setAgentScopeContext(null)
           if (activeRequestRef.current?.id === requestId) {
             activeRequestRef.current = null
@@ -741,6 +769,9 @@ export function useAiChat() {
       updateRequestMessage('正在判断处理方式...')
       addTimelineItem({ type: 'answer_streaming', label: '判断处理方式' })
 
+      const directDiagnosticRunId = startAgentTrace({ mode: 'direct', metadata: diagnosticMetadata })
+      const directAnswerSpanId = startAgentTraceSpan(directDiagnosticRunId, 'final_answer', { streaming: ai.streamEnabled })
+      let directDiagnosticStatus: AgentTraceStatus = 'completed'
       try {
         updateRequestMessage('正在生成回答...')
         addTimelineItem({ type: 'answer_streaming', label: '生成回答' })
@@ -754,6 +785,7 @@ export function useAiChat() {
           temperature: ai.temperature,
           reasoningMode,
         })
+        finishAgentTraceSpan(directDiagnosticRunId, directAnswerSpanId, isCurrentRequest() ? 'success' : 'cancelled')
         if (!isCurrentRequest()) return
         if (isCurrentRequest()) {
           addTimelineItem({ type: 'done', label: '生成回答完成' })
@@ -780,6 +812,7 @@ export function useAiChat() {
           )
         }
       } catch (err) {
+        directDiagnosticStatus = 'error'
         if (!isCurrentRequest()) return
         const msg = err instanceof Error ? err.message : String(err)
         setError(`请求失败：${msg}`)
@@ -791,6 +824,10 @@ export function useAiChat() {
           removeMessageById(assistantMessageId)
         }
       } finally {
+        finishAgentTrace(
+          directDiagnosticRunId,
+          requestController.signal.aborted ? 'cancelled' : directDiagnosticStatus,
+        )
         if (activeRequestRef.current?.id === requestId) {
           activeRequestRef.current = null
           cancelRef.current = () => {}

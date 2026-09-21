@@ -1093,9 +1093,8 @@ describe('classifySelectionRequest', () => {
     expect(classifySelectionRequest('为什么这样写', selectionContext)).toBe('context')
   })
 
-  it('选区对比（前后文匹配 explicit_lookup）', () => {
-    // "前后文" 匹配 SELECTION_EXPLICIT_LOOKUP_PATTERN
-    expect(classifySelectionRequest('对比一下前后文', selectionContext)).toBe('explicit_lookup')
+  it('选区对比前后文需要上下文', () => {
+    expect(classifySelectionRequest('对比一下前后文', selectionContext)).toBe('context')
   })
 
   it('选区搜索返回 explicit_lookup', () => {
@@ -1104,6 +1103,14 @@ describe('classifySelectionRequest', () => {
 
   it('选区知识库返回 explicit_lookup', () => {
     expect(classifySelectionRequest('知识库里有没有这个', selectionContext)).toBe('explicit_lookup')
+  })
+
+  it('带选区检索知识库只要求知识库检索', () => {
+    const decision = makeRoutingDecision('检索知识库相关内容', selectionContext)
+    expect(decision.required).toContain('knowledge')
+    expect(decision.required).not.toContain('selection_context')
+    expect(decision.candidateTools).toContain('search_knowledge')
+    expect(decision.candidateTools).not.toContain('read_selection_context')
   })
 
   it('普通问题（含"怎么"）返回 context', () => {
