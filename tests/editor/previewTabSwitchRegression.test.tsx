@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -77,10 +77,12 @@ vi.mock('@/services/markdownBlocks', async (importOriginal) => {
 })
 
 import { EditorArea } from '@/components/editor/EditorArea'
+import { useReadingPositionBridge } from '@/components/editor/useReadingPositionBridge'
+import type { MarkdownPreviewHandle } from '@/components/editor/markdownPreviewTypes'
 import { MarkdownDiffView, type MarkdownDiffViewHandle } from '@/components/editor/MarkdownDiffView'
 import { useEditorStore, type Tab, type ViewMode } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { runtimeFileReadingPositions } from '@/services/editorSession'
+import { runtimeFileReadingPositions, ScrollSyncSession } from '@/services/editorSession'
 
 function anonymousTab(id: string, content: string): Tab {
   return {
@@ -734,6 +736,56 @@ describe('preview visibility regression: restoredPreviewKeysRef race', () => {
   })
 
   describe('tab switch in preview mode', () => {
+    it('corrects a late virtual measurement and stops correcting after user input', () => {
+      setupEditor([anonymousTab('tab-a', '# A')], 'tab-a', 'preview')
+      useEditorStore.setState({ readingPositions: { 'tab-a': { previewScrollTop: 400, topLine: 25, previewLineOffset: 100 } } })
+      const container = document.createElement('div')
+      Object.defineProperty(container, 'clientHeight', { value: 600 })
+      let measuredLine = 25
+      let measuredTop = 600
+      const handle = {
+        getLineForTop: () => measuredLine,
+        getTopForLine: () => measuredTop,
+      } as unknown as MarkdownPreviewHandle
+      const restoredKeys = { current: { left: null as string | null, right: null as string | null } }
+      const { result } = renderHook(() => useReadingPositionBridge({
+        activeTabId: 'tab-a',
+        viewMode: 'preview',
+        viewModeRef: { current: 'preview' },
+        editorViewRef: { current: null },
+        leftPreviewContainerRef: { current: container },
+        rightPreviewContainerRef: { current: null },
+        leftMarkdownPreviewRef: { current: handle },
+        rightMarkdownPreviewRef: { current: null },
+        restoredPreviewKeysRef: restoredKeys,
+        scrollSyncSessionRef: { current: new ScrollSyncSession() },
+        clearPreviewSwitching: vi.fn(),
+        setPreviewRestoreTick: vi.fn(),
+        flushReadingPositions: vi.fn(),
+        updateEditorHeading: vi.fn(),
+        setTocFocus: vi.fn(),
+      }))
+
+      act(() => {
+        result.current.restorePreviewReadingPosition('tab-a', container, 'left')
+        vi.advanceTimersByTime(50)
+      })
+      expect(restoredKeys.current.left).toBe('tab-a')
+      expect(container.scrollTop).toBe(668)
+      measuredLine = 10
+      measuredTop = 650
+      act(() => vi.advanceTimersByTime(250))
+      expect(container.scrollTop).toBe(718)
+
+      act(() => result.current.allowPreviewPositionUpdates('tab-a', 'left'))
+      container.scrollTop = 700
+      act(() => result.current.savePreviewReadingPosition('tab-a', container, handle, 'left'))
+      expect(result.current.readingPositionsRef.current.get('tab-a')).toMatchObject({ previewLineOffset: 82 })
+      measuredLine = 10
+      act(() => vi.advanceTimersByTime(800))
+      expect(container.scrollTop).toBe(700)
+    })
+
     it('uses a measured line target on the first preview-to-editor switch', async () => {
       const content = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 行`).join('\n')
       setupEditor([anonymousTab('tab-a', content)], 'tab-a', 'preview', { modePerformancePolicy: 'memory' })

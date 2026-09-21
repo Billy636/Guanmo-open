@@ -95,6 +95,7 @@ export interface ReadingPosition {
   editorScrollTop?: number
   previewScrollTop?: number
   topLine?: number
+  previewLineOffset?: number
   /** 编辑器光标位置 */
   cursor?: number
   /** 编辑器主选区 {anchor, head} */
@@ -123,8 +124,10 @@ export class ReadingPositionSession {
     if (hasEditorTop && hasPreviewTop) {
       next.editorScrollTop = undefined
       next.previewScrollTop = undefined
+      next.previewLineOffset = undefined
     } else if (hasEditorTop) {
       next.previewScrollTop = undefined
+      next.previewLineOffset = undefined
     } else if (hasPreviewTop) {
       next.editorScrollTop = undefined
     }
@@ -139,7 +142,8 @@ export class ReadingPositionSession {
   seedPaneFromSharedPosition(tabId: string, pane: 'left' | 'right'): ReadingPosition {
     const shared = this.positions[tabId]
     const position: ReadingPosition = typeof shared?.topLine === 'number'
-      ? { topLine: shared.topLine }
+      ? { topLine: shared.topLine, ...(typeof shared.previewScrollTop === 'number' && typeof shared.previewLineOffset === 'number'
+        ? { previewLineOffset: shared.previewLineOffset } : {}) }
       : typeof shared?.previewScrollTop === 'number'
         ? { previewScrollTop: shared.previewScrollTop }
         : { topLine: 1 }
@@ -208,6 +212,7 @@ export class RuntimeFileReadingPositions {
       if (!sameContent || !sameLayout) {
         position.editorScrollTop = undefined
         position.previewScrollTop = undefined
+        position.previewLineOffset = undefined
       }
       if (!sameContent) {
         position.cursor = undefined

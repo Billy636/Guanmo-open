@@ -77,6 +77,7 @@ export function useReadingPositionBridge({
   const isRestoringScrollRef = useRef(false)
   const restoreScrollFrameRef = useRef<number | null>(null)
   const previewRestoreFramesRef = useRef<{ left: number | null; right: number | null }>({ left: null, right: null })
+  const previewRestoreTimersRef = useRef<{ left: number | null; right: number | null }>({ left: null, right: null })
   const restoringPreviewTabsRef = useRef<{ left: string | null; right: string | null }>({ left: null, right: null })
   const editorRestoreFrameRef = useRef<number | null>(null)
   const editorTocFrameRef = useRef<number | null>(null)
@@ -131,9 +132,12 @@ export function useReadingPositionBridge({
     if (!readingPositionsRef.current || isRestoringScrollRef.current
       || restoringPreviewTabsRef.current[pane] === tabId || !container || !previewHandle) return
     const topLine = previewHandle.getLineForTop(container.scrollTop + SCROLL_SYNC_TOP_OFFSET)
+    const lineTop = typeof topLine === 'number' ? previewHandle.getTopForLine(topLine) : undefined
     const position = {
       previewScrollTop: container.scrollTop,
       ...(typeof topLine === 'number' ? { topLine } : {}),
+      previewLineOffset: typeof lineTop === 'number'
+        ? Math.max(0, container.scrollTop + SCROLL_SYNC_TOP_OFFSET - lineTop) : undefined,
     }
     if (viewModeRef.current === 'dual-preview') {
       readingPositionsRef.current.saveForPane(tabId, pane, position)
@@ -276,6 +280,10 @@ export function useReadingPositionBridge({
       window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
       previewRestoreFramesRef.current[pane] = null
     }
+    if (previewRestoreTimersRef.current[pane] !== null) {
+      window.clearTimeout(previewRestoreTimersRef.current[pane]!)
+      previewRestoreTimersRef.current[pane] = null
+    }
     restoringPreviewTabsRef.current[pane] = null
     restoredPreviewKeysRef.current[pane] = tabId
     schedulePreviewReveal(tabId)
@@ -332,6 +340,10 @@ export function useReadingPositionBridge({
       window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
       previewRestoreFramesRef.current[pane] = null
     }
+    if (previewRestoreTimersRef.current[pane] !== null) {
+      window.clearTimeout(previewRestoreTimersRef.current[pane]!)
+      previewRestoreTimersRef.current[pane] = null
+    }
     restoringPreviewTabsRef.current[pane] = typeof position?.previewScrollTop === 'number'
       || typeof position?.topLine === 'number' ? tabId : null
     const previewHandle = pane === 'left' ? leftMarkdownPreviewRef.current : rightMarkdownPreviewRef.current
@@ -339,7 +351,7 @@ export function useReadingPositionBridge({
       ? getPreviewTopForLine(container, position.topLine, previewHandle?.getTopForLine(position.topLine))
       : undefined
     const nextTop = position?.previewScrollTop
-      ?? (typeof lineTop === 'number' ? Math.max(0, lineTop - SCROLL_SYNC_TOP_OFFSET) : 0)
+      ?? (typeof lineTop === 'number' ? Math.max(0, lineTop - SCROLL_SYNC_TOP_OFFSET + (position?.previewLineOffset ?? 0)) : 0)
     withRestoreLock(() => {
       container.scrollTop = nextTop
     })
@@ -354,6 +366,34 @@ export function useReadingPositionBridge({
     // A remounted virtual preview starts with estimated block heights; align its saved line after measurement.
     let attempts = 0
     let stableFrames = 0
+    let lateChecks = 0
+    const targetTopFor = (handle: MarkdownPreviewHandle) => {
+      const lineTop = getPreviewTopForLine(container, position.topLine!, handle.getTopForLine(position.topLine!))
+      return typeof lineTop === 'number'
+        ? Math.max(0, lineTop - SCROLL_SYNC_TOP_OFFSET + (position.previewLineOffset ?? 0))
+        : undefined
+    }
+    const checkLateLayout = () => {
+      previewRestoreTimersRef.current[pane] = null
+      if (restoringPreviewTabsRef.current[pane] !== tabId) return
+      const state = useEditorStore.getState()
+      if (state.viewMode === 'edit' || (pane === 'right' && state.viewMode !== 'dual-preview')) return
+      const currentTabId = pane === 'right' && state.viewMode === 'dual-preview'
+        ? state.rightPaneUserSelected ? state.rightPaneTabId : state.activeTabId
+        : state.activeTabId
+      const currentContainer = pane === 'left' ? leftPreviewContainerRef.current : rightPreviewContainerRef.current
+      if (currentTabId !== tabId || currentContainer !== container) return
+      const handle = pane === 'left' ? leftMarkdownPreviewRef.current : rightMarkdownPreviewRef.current
+      if (handle) {
+        const targetTop = targetTopFor(handle)
+        if (typeof targetTop === 'number' && (handle.getLineForTop(container.scrollTop + SCROLL_SYNC_TOP_OFFSET) !== position.topLine
+          || (typeof position.previewLineOffset === 'number' && Math.abs(container.scrollTop - targetTop) > 2))) {
+          container.scrollTop = targetTop
+        }
+      }
+      lateChecks += 1
+      if (lateChecks < 2) previewRestoreTimersRef.current[pane] = window.setTimeout(checkLateLayout, 750)
+    }
     const alignToLine = () => {
       previewRestoreFramesRef.current[pane] = null
       const state = useEditorStore.getState()
@@ -368,17 +408,19 @@ export function useReadingPositionBridge({
       const handle = pane === 'left' ? leftMarkdownPreviewRef.current : rightMarkdownPreviewRef.current
       if (handle) {
         const currentLine = handle.getLineForTop(container.scrollTop + SCROLL_SYNC_TOP_OFFSET)
-        if (currentLine === position.topLine) {
+        const targetTop = targetTopFor(handle)
+        if (currentLine === position.topLine && (typeof position.previewLineOffset !== 'number'
+          || typeof targetTop !== 'number' || Math.abs(container.scrollTop - targetTop) <= 2)) {
           stableFrames += 1
         } else {
-          const targetTop = getPreviewTopForLine(container, position.topLine!, handle.getTopForLine(position.topLine!))
-          if (typeof targetTop === 'number') container.scrollTop = Math.max(0, targetTop - SCROLL_SYNC_TOP_OFFSET)
+          if (typeof targetTop === 'number') container.scrollTop = targetTop
           stableFrames = 0
         }
       }
       attempts += 1
       if (stableFrames >= 2 || attempts >= 12) {
         reveal()
+        previewRestoreTimersRef.current[pane] = window.setTimeout(checkLateLayout, 250)
       } else {
         previewRestoreFramesRef.current[pane] = window.requestAnimationFrame(alignToLine)
       }
@@ -465,6 +507,10 @@ export function useReadingPositionBridge({
       if (previewRestoreFramesRef.current[pane] !== null) {
         window.cancelAnimationFrame(previewRestoreFramesRef.current[pane]!)
         previewRestoreFramesRef.current[pane] = null
+      }
+      if (previewRestoreTimersRef.current[pane] !== null) {
+        window.clearTimeout(previewRestoreTimersRef.current[pane]!)
+        previewRestoreTimersRef.current[pane] = null
       }
       restoringPreviewTabsRef.current[pane] = null
     }

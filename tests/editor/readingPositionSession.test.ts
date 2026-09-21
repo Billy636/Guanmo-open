@@ -6,20 +6,22 @@ describe('ReadingPositionSession', () => {
   it('跨编辑和预览模式时只保留最近模式的精确滚动位置', () => {
     const session = new ReadingPositionSession()
 
-    session.save('tab-1', { previewScrollTop: 320, topLine: 24 })
+    session.save('tab-1', { previewScrollTop: 320, topLine: 24, previewLineOffset: 90 })
     session.save('tab-1', { editorScrollTop: 960, topLine: 80 })
 
     expect(session.get('tab-1')).toMatchObject({
       editorScrollTop: 960,
       previewScrollTop: undefined,
+      previewLineOffset: undefined,
       topLine: 80,
     })
 
-    session.save('tab-1', { previewScrollTop: 1440, topLine: 120 })
+    session.save('tab-1', { previewScrollTop: 1440, topLine: 120, previewLineOffset: 120 })
 
     expect(session.get('tab-1')).toMatchObject({
       editorScrollTop: undefined,
       previewScrollTop: 1440,
+      previewLineOffset: 120,
       topLine: 120,
     })
   })
@@ -62,6 +64,13 @@ describe('ReadingPositionSession', () => {
     expect(session.getForPane('tab-1', 'left')).toEqual({ previewScrollTop: 480 })
   })
 
+  it('进入对照阅读时保留预览行内偏移', () => {
+    const session = new ReadingPositionSession()
+    session.save('tab-1', { previewScrollTop: 480, topLine: 11, previewLineOffset: 180 })
+
+    expect(session.seedPaneFromSharedPosition('tab-1', 'left')).toEqual({ topLine: 11, previewLineOffset: 180 })
+  })
+
   it('没有共享位置时从文档顶部开始', () => {
     const session = new ReadingPositionSession()
 
@@ -87,11 +96,11 @@ describe('RuntimeFileReadingPositions', () => {
   it('restores a reopened file by normalized path while keeping other files separate', () => {
     const cache = new RuntimeFileReadingPositions()
     const layout = { sharedEditor: '', sharedPreview: 'preview:500', left: 'left:500', right: 'right:500' }
-    cache.remember('C:\\fixtures\\a.md', '# A', 'shared', { previewScrollTop: 380, topLine: 12 }, layout.sharedPreview)
+    cache.remember('C:\\fixtures\\a.md', '# A', 'shared', { previewScrollTop: 380, topLine: 12, previewLineOffset: 90 }, layout.sharedPreview)
     cache.remember('C:\\fixtures\\a.md', '# A', 'right', { previewScrollTop: 920, topLine: 29 }, layout.right)
 
     expect(cache.restore('c:/fixtures/a.md', '# A', layout)).toEqual({
-      shared: { previewScrollTop: 380, topLine: 12 },
+      shared: { previewScrollTop: 380, topLine: 12, previewLineOffset: 90 },
       right: { previewScrollTop: 920, topLine: 29 },
     })
     expect(cache.restore('c:/fixtures/b.md', '# A', layout)).toEqual({})
@@ -111,12 +120,24 @@ describe('RuntimeFileReadingPositions', () => {
       topLine: 18,
       cursor: undefined,
       previewScrollTop: undefined,
+      previewLineOffset: undefined,
       selection: undefined,
       ranges: undefined,
       mainIndex: undefined,
     })
     expect(cache.restore('C:/fixtures/a.md', '# A', { ...layout, sharedEditor: 'edit:320' }).shared)
       .toMatchObject({ editorScrollTop: undefined, topLine: 18, cursor: 150 })
+  })
+
+  it('drops the preview pixel offset when the reopened layout changes', () => {
+    const cache = new RuntimeFileReadingPositions()
+    const layout = { sharedEditor: '', sharedPreview: 'preview:500', left: '', right: '' }
+    cache.remember('C:/fixtures/a.md', '# A', 'shared', {
+      previewScrollTop: 480, topLine: 11, previewLineOffset: 180,
+    }, layout.sharedPreview)
+
+    expect(cache.restore('C:/fixtures/a.md', '# A', { ...layout, sharedPreview: 'preview:320' }).shared)
+      .toMatchObject({ previewScrollTop: undefined, topLine: 11, previewLineOffset: undefined })
   })
 
   it('carries a renamed file to its new path without merging unrelated files', () => {
