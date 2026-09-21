@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PRODUCT_TOUR_TOPICS, type ProductTourPlacement, type ProductTourStep, type ProductTourTopic } from './productTourContent'
-import './product-tour.css'
+import productTourStyles from './product-tour.css?inline'
 
 interface RectLike { left: number; top: number; right: number; bottom: number; width: number; height: number }
 interface TourLayout { rects: RectLike[]; anchor: RectLike }
@@ -19,6 +19,7 @@ interface ProductTourOverlayProps {
 const CARD_WIDTH = 360
 const CARD_GAP = 20
 const VIEWPORT_PADDING = 16
+const PRODUCT_TOUR_STYLE_ID = 'guanmo-product-tour-styles'
 
 function readRect(element: Element): RectLike {
   const { left, top, right, bottom, width, height } = element.getBoundingClientRect()
@@ -127,6 +128,15 @@ export function ProductTourOverlay({ open, topic, steps, stepIndex, onStepChange
   const [targetMissing, setTargetMissing] = useState(false)
   const isMenu = topic === 'topics'
   const isWeb = typeof document !== 'undefined' && document.documentElement.dataset.gmRuntime === 'web'
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById(PRODUCT_TOUR_STYLE_ID)) return
+    const style = document.createElement('style')
+    style.id = PRODUCT_TOUR_STYLE_ID
+    style.textContent = productTourStyles
+    document.head.appendChild(style)
+    return () => style.remove()
+  }, [])
 
   const measure = useCallback(() => {
     if (!open || !step) { setLayout(null); setPosition(null); return }

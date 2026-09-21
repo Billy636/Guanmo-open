@@ -25,6 +25,13 @@ vi.mock('react-markdown', async () => {
   }
 })
 
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async () => ({ svg: '<svg />' })),
+  },
+}))
+
 beforeAll(() => {
   if (!Range.prototype.getClientRects) {
     Range.prototype.getClientRects = () => [] as unknown as DOMRectList

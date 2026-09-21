@@ -30,11 +30,18 @@ describe('AssistantVisual renderer adapter', () => {
     expect(container.querySelector('.gm-ai-sprite')?.classList.contains('gm-ai-visual--sprite')).toBe(true)
   })
 
-  it('已完成的最新 assistant 消息保持静态，只有当前流式消息播放动画', () => {
+  it('历史 assistant 消息保持静态，最新完成消息播放 idle 动画', () => {
+    const history = render(
+      <ChatBubble role="assistant" content="历史消息" isLast={false} streaming={false} />,
+    )
+    expect(history.container.querySelector('.gm-ai-sprite')?.dataset.animated).toBe('false')
+    history.unmount()
+
     const completed = render(
       <ChatBubble role="assistant" content="已完成" isLast streaming={false} />,
     )
-    expect(completed.container.querySelector('.gm-ai-sprite')?.dataset.animated).toBe('false')
+    expect(completed.container.querySelector('.gm-ai-sprite')?.dataset.state).toBe('idle')
+    expect(completed.container.querySelector('.gm-ai-sprite')?.dataset.animated).toBe('true')
     completed.unmount()
 
     const streaming = render(
