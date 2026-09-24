@@ -10,6 +10,10 @@ import { createContext, forwardRef, isValidElement, lazy, memo, Suspense, useCal
 import { flushSync } from 'react-dom'
 import { MarkdownImage } from './MarkdownImage'
 import { rehypeWindowsImagePaths } from '@/services/markdownImagePaths'
+import { rehypeLocalLinkPaths } from '@/services/markdownLinks'
+import { isTauri } from '@/hooks/useTauri'
+import { toast } from '@/services/toast'
+import { describeFileOperationError } from '@/services/fileOperationErrors'
 import { createHeadingId } from '@/services/markdownToc'
 import { remarkStandaloneDisplayMath } from '@/services/markdownMath'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -2344,6 +2348,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   const rehypePlugins = useMemo(
     () => [
       rehypeWindowsImagePaths,
+      rehypeLocalLinkPaths,
       ...(!skipHtml && hasEmbeddedHtml && htmlRehypePlugins ? htmlRehypePlugins : []),
       ...MARKDOWN_REHYPE_PLUGINS,
     ],
@@ -2362,7 +2367,16 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
   const components = useMemo<Partial<Components>>(() => {
     const headingIds = new Map<string, number>()
     const handleAnchorClick = (href?: string, isFootnoteBackref?: boolean) => (event: React.MouseEvent<HTMLAnchorElement>) => {
-      if (!href?.startsWith('#')) return
+      if (!href?.startsWith('#')) {
+        if (!href || isTauri()) {
+          event.preventDefault()
+          const label = event.currentTarget.textContent || '图片'
+          void import('@/services/markdownLinkActions')
+            .then(({ followMarkdownLink }) => followMarkdownLink(href, filePath, label, setZoomImage))
+            .catch((error) => toast.error(describeFileOperationError(error, '打开链接失败')))
+        }
+        return
+      }
       event.preventDefault()
       cancelProgrammaticScroll()
       const id = href.slice(1)
@@ -2543,11 +2557,12 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
               <a
                 {...props}
                 id={anchorId}
-                href={href}
+                  href={href || undefined}
                 className="text-gm-primary hover:underline font-bold transition-colors hover:text-gm-primary-hover"
-                target={isHashLink ? undefined : '_blank'}
+                  target={isHashLink || !href || isTauri() ? undefined : '_blank'}
                 rel={isHashLink ? undefined : 'noopener noreferrer'}
-                onClick={handleAnchorClick(href, isFootnoteBackref)}
+                  onClick={handleAnchorClick(href, isFootnoteBackref)}
+                  onAuxClick={(event) => { if (event.button === 1) handleAnchorClick(href, isFootnoteBackref)(event) }}
               >
                 {isFootnoteBackref ? (children && String(children).trim() ? children : '↩ 返回正文') : children}
               </a>

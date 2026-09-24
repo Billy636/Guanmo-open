@@ -71,16 +71,17 @@ describe('Markdown image preview authorization', () => {
     expect(mocks.convert).not.toHaveBeenCalled()
   })
 
-  it.each(['javascript:alert%281%29', 'vbscript:msgbox%281%29', 'E:relative.png', 'file:///E:/notes/figure.png'])('keeps the existing URL filter for %s', (path) => {
+  it.each(['javascript:alert%281%29', 'vbscript:msgbox%281%29', 'E:relative.png'])('keeps the existing URL filter for %s', (path) => {
     render(<MarkdownPreview content={`![blocked](${path})\n\n[link](${path})`} filePath="E:/notes/test.md" />)
     expect(screen.getByAltText('blocked').getAttribute('src')).toBeNull()
-    expect(screen.getByText('link').getAttribute('href') || '').toBe('')
+    expect(screen.getByText('link').closest('a')?.getAttribute('href') || '').toBe('')
     expect(mocks.prepare).not.toHaveBeenCalled()
   })
 
-  it('does not change normal Windows links into image or navigable protocol URLs', () => {
+  it('preserves Windows document links for internal navigation without turning them into images', () => {
     render(<MarkdownPreview content="[document](E:/notes/report.md)" filePath="E:/notes/test.md" />)
-    expect(screen.getByText('document').getAttribute('href') || '').toBe('')
+    expect(screen.getByText('document').closest('a')?.getAttribute('href')).toBe('E%3A/notes/report.md')
+    expect(screen.getByText('document').closest('a')?.getAttribute('target')).toBeNull()
     expect(mocks.prepare).not.toHaveBeenCalled()
   })
 
