@@ -9,6 +9,7 @@ import { motion } from 'motion/react'
 import { createContext, forwardRef, isValidElement, lazy, memo, Suspense, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { MarkdownImage } from './MarkdownImage'
+import { rehypeWindowsImagePaths } from '@/services/markdownImagePaths'
 import { createHeadingId } from '@/services/markdownToc'
 import { remarkStandaloneDisplayMath } from '@/services/markdownMath'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -2342,6 +2343,7 @@ export const MarkdownPreview = memo(forwardRef(function MarkdownPreview({
 
   const rehypePlugins = useMemo(
     () => [
+      rehypeWindowsImagePaths,
       ...(!skipHtml && hasEmbeddedHtml && htmlRehypePlugins ? htmlRehypePlugins : []),
       ...MARKDOWN_REHYPE_PLUGINS,
     ],

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { isTauri, prepareMarkdownImage } from '@/hooks/useTauri'
+import { isTauri, prepareMarkdownImage, requestSelectedPathAccess } from '@/hooks/useTauri'
+import { decodePreviewImagePath } from '@/services/markdownImagePaths'
 
 interface MarkdownImageProps {
   src?: string
@@ -16,9 +17,7 @@ interface MarkdownImageProps {
 function localImagePath(src: string, filePath?: string | null): string | null {
   if (!src || /^(https?:|data:|blob:|asset:|file:)/i.test(src) || src.startsWith('#')) return null
   if (!filePath || !isTauri()) return null
-  let decoded = src
-  try { decoded = decodeURI(src) } catch { /* Keep malformed escapes as literal filename characters. */ }
-  const normalized = decoded.replace(/\\/g, '/')
+  const normalized = decodePreviewImagePath(src).replace(/\\/g, '/')
   if (/^[a-zA-Z]:\//.test(normalized) || normalized.startsWith('/')) return normalized
   const documentPath = filePath.replace(/\\/g, '/')
   const directory = documentPath.slice(0, documentPath.lastIndexOf('/'))
@@ -27,7 +26,8 @@ function localImagePath(src: string, filePath?: string | null): string | null {
 
 export function MarkdownImage({ src = '', alt = '', title, width, height, filePath, line, onZoom }: MarkdownImageProps) {
   const imagePath = localImagePath(src, filePath)
-  const [prepared, setPrepared] = useState<{ filePath: string; imagePath: string; src?: string } | null>(null)
+  const [prepared, setPrepared] = useState<{ filePath: string; imagePath: string; src?: string; error?: string } | null>(null)
+  const [requesting, setRequesting] = useState<string | null>(null)
 
   useEffect(() => {
     if (!imagePath || !filePath) return
@@ -45,13 +45,41 @@ export function MarkdownImage({ src = '', alt = '', title, width, height, filePa
   const current = prepared && prepared.filePath === filePath && prepared.imagePath === imagePath ? prepared : null
   const resolvedSrc = imagePath ? current?.src : src
   const failed = Boolean(imagePath && current && !current.src)
+  const requestKey = `${filePath}\0${imagePath}`
+  const busy = requesting === requestKey
+
+  async function authorizeImage() {
+    if (!imagePath || !filePath || busy) return
+    setRequesting(requestKey)
+    try {
+      // Native selection explicitly grants this file, without importing/copying
+      // it into assets. The existing helper rejects selection of another file.
+      const granted = await requestSelectedPathAccess(imagePath, [
+        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] },
+      ])
+      if (!granted) return
+      const canonicalPath = await prepareMarkdownImage(filePath, imagePath)
+      const authorizedSrc = convertFileSrc(canonicalPath)
+      setPrepared((previous) => previous?.filePath === filePath && previous.imagePath === imagePath
+        ? { filePath, imagePath, src: authorizedSrc }
+        : previous)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setPrepared((previous) => previous?.filePath === filePath && previous.imagePath === imagePath
+        ? { ...previous, error: message }
+        : previous)
+    } finally {
+      setRequesting((previous) => previous === requestKey ? null : previous)
+    }
+  }
 
   return (
     <button
       type="button"
       className="gm-markdown-image my-4 block max-w-full cursor-zoom-in rounded-xl border border-gm-border bg-transparent p-0 text-left"
-      onClick={() => { if (resolvedSrc) onZoom({ src: resolvedSrc, alt }) }}
-      title={failed ? '无法加载图片：请检查路径或通过打开文件夹授予访问权限' : '点击放大图片'}
+      onClick={() => { if (failed) void authorizeImage(); else if (resolvedSrc) onZoom({ src: resolvedSrc, alt }) }}
+      disabled={busy}
+      title={failed ? (current?.error || '无法加载图片：请检查路径，点击选择原图片并授权') : '点击放大图片'}
       data-md-line={line}
     >
       <img
@@ -65,6 +93,11 @@ export function MarkdownImage({ src = '', alt = '', title, width, height, filePa
         decoding="async"
         className="max-w-full rounded-xl"
       />
+      {failed && (
+        <span className="block px-3 py-2 text-sm text-gm-text-secondary">
+          {busy ? '正在等待图片授权…' : '无法加载图片，点击选择原图片并授权'}
+        </span>
+      )}
     </button>
   )
 }

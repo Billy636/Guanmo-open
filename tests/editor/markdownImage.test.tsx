@@ -6,17 +6,20 @@ import { MarkdownPreview } from '@/components/editor/MarkdownPreview'
 const mocks = vi.hoisted(() => ({
   desktop: true,
   prepare: vi.fn<(markdown: string, image: string) => Promise<string>>(),
+  requestAccess: vi.fn<(path: string, filters: unknown) => Promise<boolean>>(),
   convert: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
 }))
 vi.mock('@/hooks/useTauri', () => ({
   isTauri: () => mocks.desktop,
   prepareMarkdownImage: mocks.prepare,
+  requestSelectedPathAccess: mocks.requestAccess,
 }))
 vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: mocks.convert }))
 
 beforeEach(() => {
   mocks.desktop = true
   mocks.prepare.mockReset().mockImplementation(async (_markdown, image) => image)
+  mocks.requestAccess.mockReset().mockResolvedValue(false)
 })
 afterEach(cleanup)
 
@@ -42,6 +45,90 @@ describe('Markdown image preview authorization', () => {
     render(<MarkdownPreview content="![Fig2test](模型111极图_文献配色.png)" filePath="C:/notes/test.md" />)
     await waitFor(() => expect(screen.getByAltText('Fig2test').getAttribute('src')).toContain('asset://localhost/'))
     expect(mocks.prepare).toHaveBeenCalledWith('C:/notes/test.md', 'C:/notes/模型111极图_文献配色.png')
+  })
+
+  it.each([
+    ['![absolute](E:/notes/图1.png)', 'E:/notes/图1.png'],
+    ['- ![absolute](E:/notes/图1.png)', 'E:/notes/图1.png'],
+    ['![absolute](e:/notes/figure.png)', 'e:/notes/figure.png'],
+    ['![absolute](E:\\notes\\figure.png)', 'E:/notes/figure.png'],
+    ['![absolute](<E:/notes/图 1.png>)', 'E:/notes/图 1.png'],
+    ['![absolute](E:/notes/%E5%9B%BE%201.png)', 'E:/notes/图 1.png'],
+    ['![absolute][fig]\n\n[fig]: E:/notes/图1.png', 'E:/notes/图1.png'],
+    ['<div>\n\n![absolute](E:/notes/图1.png)\n\n</div>', 'E:/notes/图1.png'],
+  ])('keeps a drive path through the full Markdown preview: %s', async (content, imagePath) => {
+    render(<MarkdownPreview content={content} filePath="E:/notes/SUMMARY.md" />)
+    await waitFor(() => expect(screen.getByAltText('absolute').getAttribute('src')).toContain('asset://localhost/'))
+    expect(mocks.prepare).toHaveBeenCalledWith('E:/notes/SUMMARY.md', imagePath)
+  })
+
+  it('does not bypass backend permissions for a parsed absolute image', async () => {
+    mocks.prepare.mockRejectedValue(new Error('outside the Markdown directory'))
+    render(<MarkdownPreview content="![external](E:/private/figure.png)" filePath="E:/notes/test.md" />)
+    await waitFor(() => expect(screen.getByAltText('external').closest('button')?.title).toContain('无法加载图片'))
+    expect(mocks.prepare).toHaveBeenCalledWith('E:/notes/test.md', 'E:/private/figure.png')
+    expect(screen.getByAltText('external').getAttribute('src')).toBeNull()
+    expect(mocks.convert).not.toHaveBeenCalled()
+  })
+
+  it.each(['javascript:alert%281%29', 'vbscript:msgbox%281%29', 'E:relative.png', 'file:///E:/notes/figure.png'])('keeps the existing URL filter for %s', (path) => {
+    render(<MarkdownPreview content={`![blocked](${path})\n\n[link](${path})`} filePath="E:/notes/test.md" />)
+    expect(screen.getByAltText('blocked').getAttribute('src')).toBeNull()
+    expect(screen.getByText('link').getAttribute('href') || '').toBe('')
+    expect(mocks.prepare).not.toHaveBeenCalled()
+  })
+
+  it('does not change normal Windows links into image or navigable protocol URLs', () => {
+    render(<MarkdownPreview content="[document](E:/notes/report.md)" filePath="E:/notes/test.md" />)
+    expect(screen.getByText('document').getAttribute('href') || '').toBe('')
+    expect(mocks.prepare).not.toHaveBeenCalled()
+  })
+
+  it('offers explicit access to an external image and retries only after user selection', async () => {
+    mocks.prepare.mockRejectedValueOnce(new Error('outside the Markdown directory'))
+    mocks.requestAccess.mockResolvedValue(true)
+    render(<MarkdownPreview content="![external](E:/figures/图1.png)" filePath="E:/reports/test.md" />)
+    const prompt = await screen.findByText('无法加载图片，点击选择原图片并授权')
+    expect(mocks.requestAccess).not.toHaveBeenCalled()
+    fireEvent.click(prompt)
+    await waitFor(() => expect(screen.getByAltText('external').getAttribute('src')).toContain('asset://localhost/'))
+    expect(mocks.requestAccess).toHaveBeenCalledWith('E:/figures/图1.png', [
+      { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] },
+    ])
+    expect(mocks.prepare).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('无法加载图片，点击选择原图片并授权')).toBeNull()
+  })
+
+  it('does not load or grant an external image if selection is cancelled', async () => {
+    mocks.prepare.mockRejectedValue(new Error('outside the Markdown directory'))
+    render(<MarkdownImage src="E:/figures/figure.png" filePath="E:/reports/test.md" alt="external" onZoom={vi.fn()} />)
+    fireEvent.click(await screen.findByText('无法加载图片，点击选择原图片并授权'))
+    await waitFor(() => expect(screen.getByRole('button').hasAttribute('disabled')).toBe(false))
+    expect(mocks.requestAccess).toHaveBeenCalledTimes(1)
+    expect(mocks.prepare).toHaveBeenCalledTimes(1)
+    expect(screen.getByAltText('external').getAttribute('src')).toBeNull()
+  })
+
+  it('shows a selection error without retrying an unapproved file', async () => {
+    mocks.prepare.mockRejectedValue(new Error('outside the Markdown directory'))
+    mocks.requestAccess.mockRejectedValue(new Error('请选择原文件以恢复访问权限'))
+    render(<MarkdownImage src="E:/figures/figure.png" filePath="E:/reports/test.md" alt="external" onZoom={vi.fn()} />)
+    fireEvent.click(await screen.findByText('无法加载图片，点击选择原图片并授权'))
+    await waitFor(() => expect(screen.getByRole('button').title).toBe('请选择原文件以恢复访问权限'))
+    expect(mocks.prepare).toHaveBeenCalledTimes(1)
+    expect(mocks.convert).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite a new document image when an old native dialog completes', async () => {
+    let grantOld!: (granted: boolean) => void
+    mocks.prepare.mockRejectedValueOnce(new Error('outside the Markdown directory'))
+    mocks.requestAccess.mockReturnValue(new Promise((resolve) => { grantOld = resolve }))
+    const { rerender } = render(<MarkdownImage src="E:/figures/old.png" filePath="E:/reports/test.md" alt="figure" onZoom={vi.fn()} />)
+    fireEvent.click(await screen.findByText('无法加载图片，点击选择原图片并授权'))
+    rerender(<MarkdownImage src="new.png" filePath="E:/new/test.md" alt="figure" onZoom={vi.fn()} />)
+    await waitFor(() => expect(screen.getByAltText('figure').getAttribute('src')).toContain(encodeURIComponent('E:/new/new.png')))
+    await act(async () => grantOld(true))
+    expect(screen.getByAltText('figure').getAttribute('src')).toContain(encodeURIComponent('E:/new/new.png'))
   })
 
   it.each([
